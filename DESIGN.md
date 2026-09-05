@@ -23,8 +23,8 @@ Auth0 tenant  ──  custom domain: auth.<domain>   (Auth0-managed cert)
                   Relying Party ID: auth.<domain>
 │
 ├── Applications
-│   ├── Baseline App    Regular Web App   http://localhost:3000
-│   ├── Sensitive App   Regular Web App   http://localhost:3001
+│   ├── Baseline App    Regular Web App   http://baseline.littlecap.biz:3000
+│   ├── Sensitive App   Regular Web App   http://sensitive.littlecap.biz:3001
 │   └── Mobile App      Native            (Bonus A)
 │
 ├── Connections
@@ -36,10 +36,19 @@ Auth0 tenant  ──  custom domain: auth.<domain>   (Auth0-managed cert)
     └── step-up-mfa       post-login trigger
 ```
 
-The apps run on `localhost`. That is fine and worth stating explicitly during the
-walkthrough: the WebAuthn ceremony is served from the Auth0 login page on
-`auth.<domain>`, not from the application origin, so the app's own domain is
-irrelevant to passkeys. Only the tenant needs the custom domain.
+The apps run locally, on hostnames mapped to `127.0.0.1` in `/etc/hosts` rather
+than on `localhost` itself. Worth stating explicitly during the walkthrough: the
+WebAuthn ceremony is served from the Auth0 login page on `auth.<domain>`, not
+from the application origin, so the app's own domain is irrelevant to passkeys.
+Only the tenant needs the custom domain.
+
+**Why not `localhost` (found during M1).** Auth0 classifies `localhost` and
+custom URI schemes as *non-verifiable* callbacks and shows a confirmation
+screen even for first-party applications, because on a shared device any local
+process can claim `http://localhost:3001/callback`. `is_first_party = true`
+does not suppress it. Ordinary hostnames make the callback verifiable and the
+screen disappears — verified against a freshly created user, since Auth0 stores
+consent per user+client and an existing account would have masked the result.
 
 ## 2. Requirement 1a — passkey or password as first factor
 
@@ -65,9 +74,21 @@ so Auth0 issues a code without prompting.
 
 Things that matter:
 
-- **Never send `prompt=login`.** It forces re-authentication and destroys the
-  entire demo.
-- First-party applications skip the consent screen, so there is no interstitial.
+- **Never send `prompt=login`** on the SSO path. It forces re-authentication and
+  destroys the entire demo. (The `/signup` route is the deliberate exception —
+  see below.)
+- First-party applications skip the consent screen, *provided the callback is
+  verifiable*. See the `localhost` note in §1.
+- **The receiving app has to actually initiate `/authorize`.** A resumed tenant
+  session does nothing on its own. The Sensitive App's home route therefore uses
+  `requiresAuth()`; without it the page rendered "Not signed in" while a
+  perfectly good session sat unused, which is indistinguishable from SSO being
+  broken. The Baseline App is left open so a signed-out state and `/signup`
+  remain reachable.
+- **`screen_hint=signup` needs `prompt=login` beside it.** `screen_hint` only
+  selects what Auth0 renders *when the user must authenticate*; with an active
+  session there is nothing to render, so Auth0 resumes silently and the hint is
+  ignored.
 - Session lifetimes live in Tenant Settings → Advanced (inactivity + absolute).
 - **Demo instrument:** both apps render their decoded ID token. The `sid` claim
   is identical across the two apps, which is the cleanest possible proof that
@@ -138,6 +159,15 @@ newly complete MFA. So re-reading `amr` on every request is not a viable
 authorization check. The app records that step-up happened, with a short TTL,
 and treats `amr` purely as the one-time signal that the challenge just
 succeeded.
+
+**`auth_time` is also absent (observed in M1).** Auth0 only emits it when the
+authorization request carries `max_age`. Any freshness check built on reading
+`auth_time` off the ID token would silently compare against `undefined` and
+either always pass or always fail. Two options: send `max_age` purely to make
+the claim appear, or keep freshness entirely server-side. The design already
+takes the second path via `stepUpAt`, so this changes nothing structurally --
+but it does mean `auth_time` must not be used as a cross-check, and the
+walkthrough should not claim it is one.
 
 ### Known weakness, stated deliberately
 
@@ -267,8 +297,9 @@ okta-demo/
 
 | Milestone | Outcome |
 | --- | --- |
-| **M0** | Domain + tenant baseline, **and both high-risk assumptions verified** |
-| M1 | Two Express apps, login, token claim viewer, **SSO demonstrable** |
+| ~~M0.1~~ | **Done.** `auth.littlecap.biz` verified, Auth0-managed cert, OIDC discovery serving |
+| **M0.2/M0.3** | Spikes still outstanding — see below |
+| ~~M1~~ | **Done.** Both apps, Terraform-managed clients, SSO verified by matching `sid` |
 | M2 | Passkeys enabled; passkey-or-password both working |
 | M3 | Step-up Action + `/transfer` guard — the core deliverable |
 | M4 | Bonus B: Postgres custom DB connection |

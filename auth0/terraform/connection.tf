@@ -15,10 +15,16 @@ resource "auth0_connection" "main_db" {
   name     = "okta-demo-db"
   strategy = "auth0"
 
+  # Deliberately minimal.
+  #
+  # password_policy and brute_force_protection were set here initially and did
+  # not persist -- the API kept reporting them unset, so every plan showed the
+  # same diff and apply never converged. Brute-force behaviour is governed
+  # tenant-wide under Security > Attack Protection rather than per connection,
+  # and the password policy sits at Auth0's default, which is already "good".
+  # A permanently drifting resource is worse than an unset option.
   options {
-    password_policy        = "good"
-    brute_force_protection = true
-    disable_signup         = false
+    disable_signup = false
   }
 }
 
