@@ -31,3 +31,31 @@ resource "auth0_connection_client" "app" {
   connection_id = auth0_connection.main_db.id
   client_id     = auth0_client.app[each.key].id
 }
+
+/**
+ * Turn off the inherited Google social connection.
+ *
+ * Dev tenants ship with google-oauth2 enabled, which put a "Continue with
+ * Google" button on the login page. It works, but it is a third first-factor
+ * path that the exercise does not call for, and it obscures the
+ * passkey-or-password story the demo is meant to show.
+ *
+ * The connection itself is left in place and simply enabled for nobody, so the
+ * set of usable first factors is stated explicitly here rather than inherited
+ * from whatever the tenant happened to ship with.
+ */
+
+data "auth0_connection" "google" {
+  name = "google-oauth2"
+
+  # Keeps the connection's own client_secret out of Terraform state.
+  hide_client_secret = true
+}
+
+# Authoritative on purpose. An empty list disables Google for EVERY application
+# in the tenant, including the stock "Default App" -- which is the intent, not a
+# side effect.
+resource "auth0_connection_clients" "google" {
+  connection_id   = data.auth0_connection.google.id
+  enabled_clients = []
+}
