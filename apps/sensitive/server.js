@@ -9,7 +9,9 @@
  * challenge described in DESIGN.md section 4.
  */
 
-require('dotenv').config();
+// See the note in apps/baseline/server.js -- without override the Terraform
+// bootstrap's AUTH0_CLIENT_ID / AUTH0_CLIENT_SECRET win over .env.
+require('dotenv').config({ override: true });
 
 const express = require('express');
 const { requiresAuth } = require('express-openid-connect');
@@ -125,5 +127,6 @@ app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 app.listen(PORT, () => {
   console.log(`Sensitive App → http://localhost:${PORT}`);
   console.log(`  issuer      : ${process.env.AUTH0_ISSUER_BASE_URL}`);
+  console.log(`  client_id   : ${process.env.AUTH0_CLIENT_ID}`);
   console.log(`  peer        : ${PEER_URL}`);
 });

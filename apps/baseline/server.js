@@ -8,7 +8,13 @@
  * authenticated with the same session id.
  */
 
-require('dotenv').config();
+// override: true is load-bearing. The Terraform bootstrap in auth0/terraform
+// authenticates with AUTH0_CLIENT_ID / AUTH0_CLIENT_SECRET of its own M2M
+// application, and dotenv will NOT overwrite variables already in the
+// environment. Running this from the same shell that exported those makes the
+// app authenticate as the Terraform app instead -- which surfaces only as a
+// confusing "Callback URL mismatch", because every other parameter is correct.
+require('dotenv').config({ override: true });
 
 const express = require('express');
 const { authConfig, renderPage, requiredEnv } = require('@okta-demo/common');
@@ -70,5 +76,8 @@ app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 app.listen(PORT, () => {
   console.log(`Baseline App  → http://localhost:${PORT}`);
   console.log(`  issuer      : ${process.env.AUTH0_ISSUER_BASE_URL}`);
+  // Printed so an unexpected client_id is obvious at startup rather than as a
+  // callback mismatch three redirects later. A client_id is not a secret.
+  console.log(`  client_id   : ${process.env.AUTH0_CLIENT_ID}`);
   console.log(`  peer        : ${PEER_URL}`);
 });
