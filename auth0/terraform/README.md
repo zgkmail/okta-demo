@@ -19,8 +19,9 @@ Terraform itself.
    | --- | --- |
    | `create:clients`, `read:clients`, `update:clients`, `delete:clients` | manage the two apps |
    | `read:client_keys` | read back the client secrets; without it `client_secret` comes back as an empty string and the generated `.env` files are silently broken |
+   | `create:connections`, `read:connections`, `update:connections`, `delete:connections` | manage the database connection and which apps are enabled on it |
 
-   Later milestones additionally need `*:connections`, `*:actions`, and
+   M3 additionally needs `*:actions`, and the MFA work needs
    `read:guardian_factors` / `update:guardian_factors`.
 
 4. Export its credentials. Note this is the **tenant** domain, not the custom
