@@ -13,7 +13,7 @@ Status: design agreed, not yet implemented.
 | Step-up factor | TOTP (`otp`) | Non-email, free, no dependency on a specific phone app. |
 | Sensitive operation | "Initiate a funds transfer" in the Sensitive App | Concrete and obviously sensitive; easy to narrate live. |
 | Bonus A | Expo + `react-native-auth0` | Reuses the same Action unchanged. |
-| Bonus B | Postgres behind a Custom DB Connection, import OFF | Users genuinely live outside Auth0. See the collision below. |
+| Bonus B | Postgres behind a Custom DB Connection, import OFF, passkeys ON | Users genuinely live outside Auth0 *and* passkeys work. Requires an Early Access feature — see §5. |
 | Config as code | Terraform `auth0` provider + `a0deploy` YAML snapshot + DNS runbook | Terraform for the reproducible parts, written runbook for what it can't reach. |
 
 ## 1. Tenant topology
@@ -28,8 +28,9 @@ Auth0 tenant  ──  custom domain: auth.<domain>   (Auth0-managed cert)
 │   └── Mobile App      Native            (Bonus A)
 │
 ├── Connections
-│   ├── Main-DB           Auth0 store    password + passkey
-│   └── External-Postgres Custom DB      password only   (Bonus B)
+│   └── External-Postgres Custom DB, import OFF, password + passkey
+│                         (falls back to a second Auth0-store connection
+│                          if the Early Access path is unavailable — §5)
 │
 └── Actions
     └── step-up-mfa       post-login trigger
@@ -154,32 +155,67 @@ challenge and TOTP satisfies it, but the defensible production choice is
 `webauthn-platform` as the step-up factor, so the second factor is at least as
 strong as the first. Worth demoing as a variant if time allows.
 
-## 5. Bonus B — external user store, and the collision it creates
+## 5. Bonus B — external user store
 
-**Auth0 does not permit passkeys on a Custom Database Connection** unless
-"Import Users to Auth0" is enabled. Requirement 1 and Bonus B therefore cannot
-both be satisfied by a single connection. Three honest resolutions:
+### The obsolete constraint
 
-| Option | External store? | Passkeys? |
-| --- | --- | --- |
-| 1. Custom DB, import **OFF** | Yes — credentials never leave Postgres | No |
-| 2. Custom DB, import **ON** (lazy migration) | Only until first login | Yes |
-| 3. Two connections, one per requirement | Yes, on that connection | Yes, on the other |
+Auth0's widely-cited October 2023 guidance says passkeys and custom database
+connections are mutually exclusive: *"you cannot use a custom database if you
+want users to sign in with passkeys."* That would put requirement 1 and Bonus B
+in direct conflict.
 
-**Chosen: option 3, shipping option 1 as the Bonus B artifact.** `Main-DB`
-carries the core requirement with passkeys. `External-Postgres` is a real
-delegated-authentication connection where users exist *only* in Postgres and
-Auth0 stores no credentials. Each requirement is fully met by the artifact
-designed for it, and the reason they can't be the same artifact is documented
-rather than hidden.
+**This is out of date.** Auth0 now supports passkeys on custom database
+connections with user import *disabled* — currently Early Access. Users continue
+to authenticate against the external store, and passkeys work. The conflict is
+gone.
 
-Option 2 is the realistic migration pattern and is worth discussing live, but it
-quietly fails the bonus: after first login the users are in Auth0's store.
+### Chosen design
 
-Implementation: Postgres (Neon), bcrypt password hashes, custom DB scripts for
-Login / Get User / Create / Verify / Change Password / Delete, plus a seed
-script. Apps select it by passing `connection=External-Postgres` on `/authorize`
-from a secondary login button.
+A single `External-Postgres` custom database connection, **import OFF**,
+**passkeys ON**, passwords also enabled. Users exist only in Postgres; Auth0
+stores no credentials. One connection satisfies requirement 1 and Bonus B
+together — no connection picker, no second login button.
+
+Requirements for the no-import passkey path:
+
+- Enable **context object support** on the connection (makes `context`
+  available to the scripts).
+- **Get User** must handle both lookup by identifier (`context.identifierType`
+  unset) and by user id (`context.identifierType === 'user_id'`).
+- **Create** must return a profile containing `user_id`.
+- Usernames disabled, or Flexible Identifiers enabled.
+- Passwords stay enabled — which is exactly what requirement 1 wants anyway.
+
+Implementation: Postgres (Neon), bcrypt hashes, scripts for Login / Get User /
+Create / Verify / Change Password / Delete, plus a seed script.
+
+### Why not lazy migration
+
+Lazy migration (import ON) is the obvious-looking answer and it is the right
+pattern for a *real* migration, but it does not satisfy this bonus. On first
+login Auth0 validates against Postgres and then writes its own user record with
+its own password hash. After that the custom DB scripts are never called again
+for that user. Postgres degrades into a one-time seed and Auth0 becomes the
+store of record — precisely what "outside of Auth0's default store" rules out.
+
+It is still worth being able to explain live, since it is what most teams
+actually do.
+
+### Fallback ladder
+
+The chosen design depends on an Early Access feature, so it needs an escape route
+rather than a single bet. In order:
+
+1. **Custom DB, import OFF, passkeys ON.** Fully satisfies both requirements.
+2. **Two connections** — `Main-DB` (Auth0 store, passkeys) for requirement 1 and
+   `External-Postgres` (import OFF, password-only) for Bonus B. Each requirement
+   fully met, but by separate artifacts, and apps must pass `connection=` on
+   `/authorize` from a second login button.
+3. **Lazy migration**, documented as a partial answer to the bonus.
+
+Fall back only if Early Access turns out to be unavailable on a free tenant.
+Whichever rung we land on, the README documents the ladder — the reasoning is
+more interesting than the outcome.
 
 ## 6. Bonus A — native app step-up
 
@@ -258,8 +294,14 @@ These are genuine unknowns, not hedges. Each has a fallback.
    scale, but worth knowing before layering conditions.
 4. Terraform provider coverage for passkey / RP ID settings — verify, and fall
    back to the runbook where it lags.
-5. Custom DB connection behaviour under Identifier-First with two database
-   connections enabled — confirm the connection picker UX is acceptable.
+5. **Is the Early Access "passkeys on custom DB without import" feature
+   available on a free tenant?** This is now the second-highest risk, because
+   the Bonus B design depends on it. Verify before M4 by attempting to enable
+   passkeys on a no-import custom DB connection; drop to the §5 fallback ladder
+   if it is gated.
+6. Whether `context.identifierType` behaves as documented for `user_id` lookups
+   — this is the crux of the no-import passkey scripts, so exercise both lookup
+   paths explicitly rather than assuming the identifier path covers it.
 
 ## 11. Secret hygiene
 
