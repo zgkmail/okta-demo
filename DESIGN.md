@@ -285,9 +285,28 @@ late. Both get tested in M0, on throwaway configuration, before anything is
 built on top of them. Neither needs finished applications.
 
 **M0.1 — Domain (blocking, mostly waiting).** Register the domain, add the
-Auth0 `CNAME` + `TXT` records, wait for verification, set the RP ID. Everything
-below depends on this, because passkeys cannot be enabled without a verified
-custom domain. Start it first, then do M0.2 while DNS propagates.
+verification record Auth0 shows in the Dashboard, wait for verification, set the
+RP ID. Everything below depends on this, because passkeys cannot be enabled
+without a verified custom domain. Start it first, then do M0.2 while DNS
+propagates.
+
+TLS needs no work: with **Auth0-managed certificates** Auth0 issues the
+certificate itself after verification and auto-renews it every three months.
+
+Cloudflare specifics, each of which is a known failure mode:
+
+- The record must be **DNS-only (grey cloud)**. Cloudflare proxies new records
+  by default; a proxied record leaves the custom domain *pending* forever with
+  no useful error.
+- Cloudflare's SSL/TLS mode (Flexible / Full / Full Strict) is **irrelevant**
+  here — it only governs proxied traffic, and this record is not proxied.
+- **Disable CNAME flattening.** Auth0 calls it unsupported for managed
+  certificates and says it may break the domain without notice.
+- Put **only** the Auth0 record at that hostname. A CNAME coexisting with
+  another record type at the same name causes SSL errors.
+
+Nothing else on this domain needs configuring — the apps run on `localhost`, so
+the domain exists purely to host `auth.<domain>`.
 
 **M0.2 — Spike A: passkeys on a no-import custom DB connection.** Resolves open
 question #5, which decides whether Bonus B is one connection or two.
