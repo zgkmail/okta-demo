@@ -23,35 +23,40 @@ const PEER_URL = requiredEnv('PEER_URL');
 
 app.use(authConfig());
 
-app.get('/', (req, res) => {
-  const authed = req.oidc.isAuthenticated();
-
-  const actions = authed
-    ? [
+/**
+ * requiresAuth() is what makes SSO legible here.
+ *
+ * The Baseline App is deliberately open, so you can see a signed-out state and
+ * reach /signup. This app is deliberately not: arriving from the Baseline App
+ * triggers /authorize, Auth0 resumes the existing tenant session, and you land
+ * signed in with no prompt.
+ *
+ * Without this the page rendered "Not signed in" until something initiated the
+ * flow -- which is indistinguishable from SSO being broken, even though the
+ * session was there the whole time.
+ */
+app.get('/', requiresAuth(), (req, res) => {
+  res.send(
+    renderPage({
+      appName: 'Sensitive App',
+      accent: '#a855f7',
+      port: PORT,
+      req,
+      banner: {
+        tone: 'ok',
+        text:
+          'You arrived here without being prompted to log in. Compare the sid ' +
+          'below with the Baseline App -- same value, same tenant session.',
+      },
+      actions: [
         { href: '/transfer', label: 'Initiate transfer →', primary: true },
-        { href: PEER_URL, label: 'Open Baseline App' },
+        // Straight to the peer's /login so the reverse direction demonstrates
+        // SSO too, rather than landing on its signed-out page.
+        { href: `${PEER_URL}/login`, label: 'Open Baseline App' },
         { href: '/claims.json', label: 'Raw claims (JSON)' },
         { href: '/logout', label: 'Log out' },
-      ]
-    : [
-        { href: '/login', label: 'Log in', primary: true },
-        { href: '/signup', label: 'Sign up' },
-      ];
-
-  const banner = authed
-    ? {
-        tone: 'info',
-        text:
-          'If you signed in at the Baseline App, you were not prompted again ' +
-          'here -- compare the sid below with the one there.',
-      }
-    : {
-        tone: 'info',
-        text: 'Sign in with a passkey or a password.',
-      };
-
-  res.send(
-    renderPage({ appName: 'Sensitive App', accent: '#a855f7', port: PORT, req, banner, actions })
+      ],
+    })
   );
 });
 
