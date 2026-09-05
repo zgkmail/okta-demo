@@ -42,6 +42,29 @@ terraform plan
 terraform apply
 ```
 
+### One-time import: the Google connection
+
+`auth0_connection_clients` is authoritative, and the provider refuses to take
+ownership of a connection that already has clients enabled:
+
+```
+Error: Connection with non empty enabled clients
+The connection already has enabled clients attached to it. Import the resource
+instead in order to proceed with the changes.
+```
+
+Auth0 auto-enables `google-oauth2` on every newly created client, so this fires
+on a fresh tenant. Import it once, then apply:
+
+```sh
+terraform import auth0_connection_clients.google <connection_id>   # con_...
+terraform apply
+```
+
+The connection id is printed in the error message. The import brings the
+existing enabled clients into state; the empty `enabled_clients` in
+`connection.tf` then removes them.
+
 Then write the application `.env` files directly from the outputs, so no secret
 is ever copied through a clipboard or a terminal scrollback:
 
