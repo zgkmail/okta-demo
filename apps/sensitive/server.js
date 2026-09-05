@@ -21,6 +21,36 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const PEER_URL = requiredEnv('PEER_URL');
 
+const MFA_POLICY = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
+const STEP_UP_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * Gate a route behind a recent step-up challenge.
+ *
+ * Sends the user back through /authorize with acr_values, and deliberately
+ * without prompt=login: Auth0 resumes the existing session, so the first factor
+ * is not requested again and only the second factor is challenged.
+ *
+ * Freshness comes from the ID token's `iat`, not `auth_time` -- Auth0 only
+ * emits auth_time when the request carries max_age, so reading it here would
+ * compare against undefined. `iat` is the issue time of the token minted by the
+ * step-up transaction, which is the moment the challenge was satisfied.
+ */
+function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
+  return (req, res, next) => {
+    const claims = req.oidc.idTokenClaims || {};
+    const amr = Array.isArray(claims.amr) ? claims.amr : [];
+    const ageMs = claims.iat ? Date.now() - claims.iat * 1000 : Infinity;
+
+    if (amr.includes('mfa') && ageMs < ttlMs) return next();
+
+    return res.oidc.login({
+      returnTo: req.originalUrl,
+      authorizationParams: { acr_values: MFA_POLICY },
+    });
+  };
+}
+
 app.use(authConfig());
 
 /**
@@ -70,18 +100,15 @@ app.get('/signup', (req, res) =>
 );
 
 /**
- * The sensitive operation.
+ * The sensitive operation: initiating a funds transfer.
  *
- * TODO(M3): replace requiresAuth() with requireStepUp(). Per DESIGN.md section 4
- * that middleware checks a server-side stepUpAt timestamp and, when stale,
- * redirects to /authorize with
- *   acr_values=http://schemas.openid.net/pape/policies/2007/06/multi-factor
- * and no prompt parameter, so Auth0 resumes the SSO session and challenges only
- * for the second factor.
+ * Reaching this handler at all means a step-up challenge was satisfied within
+ * the TTL -- requireStepUp redirects otherwise.
  */
-app.get('/transfer', requiresAuth(), (req, res) => {
+app.get('/transfer', requireStepUp(), (req, res) => {
   const claims = req.oidc.idTokenClaims || {};
-  const steppedUp = Array.isArray(claims.amr) && claims.amr.includes('mfa');
+  const amr = Array.isArray(claims.amr) ? claims.amr.join(', ') : '—';
+  const secondsAgo = claims.iat ? Math.round(Date.now() / 1000 - claims.iat) : null;
 
   const extra = `
     <h2>Initiate transfer</h2>
@@ -98,21 +125,23 @@ app.get('/transfer', requiresAuth(), (req, res) => {
       accent: '#a855f7',
       port: PORT,
       req,
-      banner: steppedUp
-        ? { tone: 'ok', text: 'amr contains "mfa" — this session completed a step-up challenge.' }
-        : {
-            tone: 'warn',
-            text:
-              'M1: step-up is NOT enforced yet, this route only checks that you are ' +
-              'logged in. amr does not contain "mfa". M3 adds the challenge.',
-          },
+      banner: {
+        tone: 'ok',
+        text:
+          `Step-up satisfied ${secondsAgo}s ago. amr = [${amr}] — note it now ` +
+          'contains "mfa", which it did not on the home page.',
+      },
       actions: [{ href: '/', label: '← Back' }],
       extra,
     })
   );
 });
 
-app.post('/transfer', requiresAuth(), express.urlencoded({ extended: false }), (req, res) => {
+// Guarded too, so the check cannot be skipped by posting directly. If the TTL
+// lapses between rendering the form and submitting it, the redirect loses the
+// body -- acceptable here, but a real implementation would re-render the form
+// with its values rather than dropping them.
+app.post('/transfer', requireStepUp(), express.urlencoded({ extended: false }), (req, res) => {
   // Nothing actually moves. The interesting part is what had to happen to get here.
   res.send(
     renderPage({
