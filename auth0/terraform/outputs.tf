@@ -48,5 +48,6 @@ output "sensitive_env" {
     PORT=${local.ports.sensitive}
     PEER_URL=${var.baseline_base_url}
     SESSION_SECRET=${random_id.session_secret["sensitive"].hex}
+    STEP_UP_TTL_SECONDS=${var.step_up_ttl_seconds}
   EOT
 }

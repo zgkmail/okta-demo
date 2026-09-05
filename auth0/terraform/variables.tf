@@ -40,3 +40,12 @@ variable "sensitive_base_url" {
   type        = string
   default     = "http://sensitive.littlecap.biz:3001"
 }
+
+variable "step_up_ttl_seconds" {
+  description = <<-EOT
+    How long a completed step-up stays valid in the Sensitive App. Drop it to
+    something small (30) to exercise the re-challenge path without waiting.
+  EOT
+  type        = number
+  default     = 300
+}

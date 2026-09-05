@@ -22,7 +22,10 @@ const PORT = process.env.PORT || 3001;
 const PEER_URL = requiredEnv('PEER_URL');
 
 const MFA_POLICY = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
-const STEP_UP_TTL_MS = 5 * 60 * 1000;
+
+// How long a completed step-up stays valid. Short values make the re-challenge
+// behaviour testable without waiting five minutes between attempts.
+const STEP_UP_TTL_MS = Number(process.env.STEP_UP_TTL_SECONDS || 300) * 1000;
 
 /**
  * Gate a route behind a recent step-up challenge.
