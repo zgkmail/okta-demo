@@ -1,0 +1,22 @@
+{
+  "name": "okta-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Auth0 SSO + step-up authentication exercise",
+  "workspaces": [
+    "apps/common",
+    "apps/baseline",
+    "apps/sensitive"
+  ],
+  "scripts": {
+    "dev": "concurrently -n baseline,sensitive -c cyan,magenta \"npm:dev:baseline\" \"npm:dev:sensitive\"",
+    "dev:baseline": "npm run dev -w @okta-demo/baseline",
+    "dev:sensitive": "npm run dev -w @okta-demo/sensitive"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

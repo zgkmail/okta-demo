@@ -1,0 +1,9 @@
+{
+  "name": "@okta-demo/common",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "express-openid-connect": "^2.17.1"
+  }
+}
