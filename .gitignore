@@ -4,3 +4,11 @@ node_modules/
 .env
 .env.local
 *.log
+
+# Terraform state holds client secrets in cleartext. This repo is public.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
