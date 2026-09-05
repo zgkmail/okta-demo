@@ -131,7 +131,12 @@ app.get('/transfer', requireStepUp(), (req, res) => {
           `Step-up satisfied ${secondsAgo}s ago. amr = [${amr}] — note it now ` +
           'contains "mfa", which it did not on the home page.',
       },
-      actions: [{ href: '/', label: '← Back' }],
+      actions: [
+        { href: '/', label: '← Back' },
+        // Ends the tenant session too, which is what resets a step-up for the
+        // next test run.
+        { href: '/logout', label: 'Log out' },
+      ],
       extra,
     })
   );
@@ -150,7 +155,12 @@ app.post('/transfer', requireStepUp(), express.urlencoded({ extended: false }), 
       port: PORT,
       req,
       banner: { tone: 'ok', text: 'Transfer submitted (simulated).' },
-      actions: [{ href: '/', label: '← Back' }],
+      actions: [
+        { href: '/', label: '← Back' },
+        // Ends the tenant session too, which is what resets a step-up for the
+        // next test run.
+        { href: '/logout', label: 'Log out' },
+      ],
       extra: `<h2>Submitted</h2><pre>${esc(JSON.stringify(req.body, null, 2))}</pre>`,
     })
   );
