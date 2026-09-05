@@ -23,6 +23,7 @@ Terraform itself.
 
    | `create:actions`, `read:actions`, `update:actions`, `delete:actions` | the step-up Action and its post-login trigger binding |
    | `read:guardian_factors`, `update:guardian_factors` | enable the OTP factor |
+   | `read:mfa_policies`, `update:mfa_policies` | set the Guardian `policy`. Separate from the factor scopes — enabling a factor and deciding when it is demanded are different permissions, and omitting these fails with `Insufficient scope, expected any of: update:mfa_policies` |
 
 4. Export its credentials. Note this is the **tenant** domain, not the custom
    domain — the Management API lives at the tenant domain:
