@@ -125,7 +125,7 @@ app.get('/claims.json', (req, res) => {
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
 
 app.listen(PORT, () => {
-  console.log(`Sensitive App → http://localhost:${PORT}`);
+  console.log(`Sensitive App → ${process.env.BASE_URL}`);
   console.log(`  issuer      : ${process.env.AUTH0_ISSUER_BASE_URL}`);
   console.log(`  client_id   : ${process.env.AUTH0_CLIENT_ID}`);
   console.log(`  peer        : ${PEER_URL}`);
