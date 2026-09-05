@@ -18,14 +18,25 @@ variable "auth0_issuer_base_url" {
   default     = "https://auth.littlecap.biz"
 }
 
+# Real hostnames rather than localhost, mapped to 127.0.0.1 via /etc/hosts.
+#
+# Auth0 treats localhost and custom URI schemes as non-verifiable callbacks and
+# shows a confirmation screen even for first-party applications, to prevent one
+# local app impersonating another on a shared device. is_first_party does not
+# suppress it. Using an ordinary domain makes the callback verifiable, so the
+# consent screen disappears.
+#
+# Requires in /etc/hosts:
+#   127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz
+
 variable "baseline_base_url" {
   description = "Origin the Baseline App is served from."
   type        = string
-  default     = "http://localhost:3000"
+  default     = "http://baseline.littlecap.biz:3000"
 }
 
 variable "sensitive_base_url" {
   description = "Origin the Sensitive App is served from."
   type        = string
-  default     = "http://localhost:3001"
+  default     = "http://sensitive.littlecap.biz:3001"
 }
