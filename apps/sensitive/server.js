@@ -55,8 +55,13 @@ app.get('/', (req, res) => {
   );
 });
 
+// See the note in apps/baseline/server.js -- screen_hint alone is ignored when
+// a tenant session is already active, so prompt=login is required.
 app.get('/signup', (req, res) =>
-  res.oidc.login({ returnTo: '/', authorizationParams: { screen_hint: 'signup' } })
+  res.oidc.login({
+    returnTo: '/',
+    authorizationParams: { screen_hint: 'signup', prompt: 'login' },
+  })
 );
 
 /**

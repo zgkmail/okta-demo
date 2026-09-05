@@ -59,10 +59,18 @@ app.get('/', (req, res) => {
 });
 
 // Same /authorize call as /login, but New Universal Login opens on the signup
-// screen. Auth0 only shows a "Sign up" link when the connection permits it, so
-// this is also the quickest way to tell a UI problem from a config problem.
+// screen.
+//
+// prompt=login is required alongside screen_hint. screen_hint only decides what
+// Auth0 renders *when the user has to authenticate*; with an active tenant
+// session there is nothing to render, so Auth0 silently resumes the session and
+// the hint is ignored. Asking to create an account is an explicit request to
+// not reuse the current session.
 app.get('/signup', (req, res) =>
-  res.oidc.login({ returnTo: '/', authorizationParams: { screen_hint: 'signup' } })
+  res.oidc.login({
+    returnTo: '/',
+    authorizationParams: { screen_hint: 'signup', prompt: 'login' },
+  })
 );
 
 // Handy during the walkthrough for diffing claims between the two apps.
