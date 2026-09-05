@@ -267,7 +267,7 @@ okta-demo/
 
 | Milestone | Outcome |
 | --- | --- |
-| M0 | Domain registered, custom domain verified, tenant baseline |
+| **M0** | Domain + tenant baseline, **and both high-risk assumptions verified** |
 | M1 | Two Express apps, login, token claim viewer, **SSO demonstrable** |
 | M2 | Passkeys enabled; passkey-or-password both working |
 | M3 | Step-up Action + `/transfer` guard — the core deliverable |
@@ -278,9 +278,58 @@ okta-demo/
 M1–M3 are the graded core. M4–M6 are stop-anywhere work; if they run long, the
 README documents the intended approach and the walkthrough covers the rest.
 
+### M0 as a de-risking spike
+
+Two assumptions in this design can invalidate work already done if they fail
+late. Both get tested in M0, on throwaway configuration, before anything is
+built on top of them. Neither needs finished applications.
+
+**M0.1 — Domain (blocking, mostly waiting).** Register the domain, add the
+Auth0 `CNAME` + `TXT` records, wait for verification, set the RP ID. Everything
+below depends on this, because passkeys cannot be enabled without a verified
+custom domain. Start it first, then do M0.2 while DNS propagates.
+
+**M0.2 — Spike A: passkeys on a no-import custom DB connection.** Resolves open
+question #5, which decides whether Bonus B is one connection or two.
+
+- Create a custom DB connection whose Login / Get User / Create scripts are
+  **stubs returning a hardcoded user**. Real Postgres is not needed to answer
+  this question, so do not build it yet.
+- Set: "Use my own database" ON, "Import Users to Auth0" **OFF**, context object
+  support ON, usernames disabled.
+- Attempt to enable **Passkey** under Authentication Methods.
+- Toggle saves → rung 1 confirmed, Bonus B is one connection. Toggle gated or
+  errors → determine whether it is an Early Access enablement or a plan gate,
+  then drop to the §5 fallback ladder and adjust the topology in §1 *before*
+  M1 rather than after M4.
+
+**M0.3 — Spike B: does step-up actually re-challenge?** Resolves open question
+#1, the highest-risk assumption in the whole design. Currently it would not
+surface until M3, after both apps exist.
+
+- Stand up a single throwaway Express app with `express-openid-connect` — a
+  cut-down version of what M1 builds anyway, so the work is not wasted.
+- Deploy the §4 Action. Log in once normally, completing MFA enrollment.
+- Without logging out, hit `/authorize` again with the `acr_values` MFA policy.
+- **Pass:** a fresh TOTP challenge appears, and the new ID token carries `amr`
+  containing `mfa`. **Fail:** Auth0 treats MFA as already satisfied and returns
+  a token without a new challenge — walk the §4 fallbacks
+  (`api.multifactor.enable` with `allowRememberBrowser: false`, then `max_age`)
+  until one forces the challenge.
+
+Spike B is the one to run first if time is short. A failure there reshapes the
+core deliverable; a failure in Spike A only reshapes a bonus.
+
+Both spikes produce throwaway config. Delete the stub connection and the
+throwaway app before M1 so they cannot be mistaken for real artifacts, but
+record the findings — "we tested X and observed Y" is exactly the kind of thing
+the walkthrough rewards.
+
 ## 10. Open questions to resolve during the build
 
-These are genuine unknowns, not hedges. Each has a fallback.
+These are genuine unknowns, not hedges. Each has a fallback. **#1 and #5 are the
+two that can invalidate completed work, so both are verified up front by the M0
+spikes in §9 rather than being discovered mid-build.**
 
 1. **Does `challengeWith` re-challenge on an SSO-resumed session where MFA was
    already completed?** This is the single highest-risk assumption in the
