@@ -47,8 +47,44 @@ function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
 
     if (amr.includes('mfa') && ageMs < ttlMs) return next();
 
+    // Loop guard, and not optional.
+    //
+    // We decide when to *ask* for a step-up; Auth0 decides whether to honour
+    // it. A remembered browser makes Auth0 skip the challenge and hand back a
+    // token with no "mfa" in amr, so the guard asks again, and again. This was
+    // observed as a browser "too many redirects" error.
+    //
+    // Any guard that redirects based on a claim it does not control needs a
+    // termination condition. Fail closed and say why, rather than spin.
+    if (req.query.stepup === 'attempted') {
+      return res.status(403).send(
+        renderPage({
+          appName: 'Sensitive App — Step-up failed',
+          accent: '#a855f7',
+          port: PORT,
+          req,
+          banner: {
+            tone: 'warn',
+            text:
+              'Auth0 completed the authorization without an MFA challenge, so ' +
+              'this operation stays blocked. The usual cause is a remembered ' +
+              'browser suppressing the challenge.',
+          },
+          actions: [
+            { href: '/', label: '← Back' },
+            { href: '/logout', label: 'Log out' },
+          ],
+          extra: `<h2>Blocked</h2><p>Expected <code>amr</code> to contain
+            <code>mfa</code> after the step-up, got <code>[${amr.join(', ') || '—'}]</code>.</p>`,
+        })
+      );
+    }
+
+    const target = new URL(req.originalUrl, process.env.BASE_URL);
+    target.searchParams.set('stepup', 'attempted');
+
     return res.oidc.login({
-      returnTo: req.originalUrl,
+      returnTo: `${target.pathname}${target.search}`,
       authorizationParams: { acr_values: MFA_POLICY },
     });
   };
