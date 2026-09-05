@@ -31,7 +31,10 @@ app.get('/', (req, res) => {
         { href: '/claims.json', label: 'Raw claims (JSON)' },
         { href: '/logout', label: 'Log out' },
       ]
-    : [{ href: '/login', label: 'Log in', primary: true }];
+    : [
+        { href: '/login', label: 'Log in', primary: true },
+        { href: '/signup', label: 'Sign up' },
+      ];
 
   const banner = authed
     ? {
@@ -49,6 +52,10 @@ app.get('/', (req, res) => {
     renderPage({ appName: 'Sensitive App', accent: '#a855f7', port: PORT, req, banner, actions })
   );
 });
+
+app.get('/signup', (req, res) =>
+  res.oidc.login({ returnTo: '/', authorizationParams: { screen_hint: 'signup' } })
+);
 
 /**
  * The sensitive operation.

@@ -28,7 +28,10 @@ app.get('/', (req, res) => {
         { href: '/claims.json', label: 'Raw claims (JSON)' },
         { href: '/logout', label: 'Log out' },
       ]
-    : [{ href: '/login', label: 'Log in', primary: true }];
+    : [
+        { href: '/login', label: 'Log in', primary: true },
+        { href: '/signup', label: 'Sign up' },
+      ];
 
   const banner = authed
     ? {
@@ -48,6 +51,13 @@ app.get('/', (req, res) => {
     renderPage({ appName: 'Baseline App', accent: '#0ea5e9', port: PORT, req, banner, actions })
   );
 });
+
+// Same /authorize call as /login, but New Universal Login opens on the signup
+// screen. Auth0 only shows a "Sign up" link when the connection permits it, so
+// this is also the quickest way to tell a UI problem from a config problem.
+app.get('/signup', (req, res) =>
+  res.oidc.login({ returnTo: '/', authorizationParams: { screen_hint: 'signup' } })
+);
 
 // Handy during the walkthrough for diffing claims between the two apps.
 app.get('/claims.json', (req, res) => {
