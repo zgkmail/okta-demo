@@ -283,10 +283,25 @@ store of record — precisely what "outside of Auth0's default store" rules out.
 It is still worth being able to explain live, since it is what most teams
 actually do.
 
+### Verified (M0.2 spike)
+
+Auth0 **accepted** a database connection with `enabled_database_customization =
+true`, `import_mode = false`, `strategy_version = 2` and
+`authentication_methods.passkey.enabled = true`. The combination the October
+2023 guidance calls impossible is configurable today, on a free tenant. Bonus B
+is **rung 1: a single connection**.
+
+Scope of that claim, precisely: the Management API accepted and persisted the
+configuration. It does **not** yet prove a passkey can be enrolled and used
+against that connection at runtime — that needs real scripts, a real user, and a
+real enrollment, which is M4. The remaining risk is that `context.identifierType`
+does not behave as documented for `user_id` lookups, which would surface as a
+broken Get User rather than a rejected configuration.
+
 ### Fallback ladder
 
-The chosen design depends on an Early Access feature, so it needs an escape route
-rather than a single bet. In order:
+Retained for the record: if the runtime behaviour turns out not to match the
+accepted configuration, these remain the options, in order:
 
 1. **Custom DB, import OFF, passkeys ON.** Fully satisfies both requirements.
 2. **Two connections** — `Main-DB` (Auth0 store, passkeys) for requirement 1 and
