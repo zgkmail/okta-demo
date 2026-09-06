@@ -201,6 +201,19 @@ days — a single user action silently disabling step-up on the one operation it
 protects. Observed as a browser redirect loop, since the guard kept asking and
 Auth0 kept declining.
 
+**The documented workaround does not apply here, and this was tested.** Auth0
+states that when a remember-browser cookie exists you can force MFA either with
+`allowRememberBrowser: false` *or* by sending `acr_values=<the MFA policy>` to
+`/authorize`. Every step-up already sends `acr_values`, so on paper
+`challengeWith` should have been safe.
+
+It is not. Deploying `challengeWith`, ticking the checkbox, letting the TTL
+lapse and retrying produced a skipped challenge and a token with **no `amr`
+claim at all** — not merely one missing `mfa`. The escape hatch appears to
+apply to Auth0's *native* MFA handling, where `acr_values` itself triggers the
+challenge; an Action-driven challenge does not inherit it. The docs do not draw
+that distinction.
+
 Shipping `api.multifactor.enable`. The `'any'` is acceptable **only because**
 OTP is the sole factor enabled in Guardian, which is itself declared in
 Terraform — so the factor is still pinned in code, just in a different file.

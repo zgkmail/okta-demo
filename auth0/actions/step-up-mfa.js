@@ -13,28 +13,44 @@
  *
  * WHY api.multifactor.enable AND NOT api.authentication.challengeWith
  *
- * challengeWith is the newer API and is nicer in two ways: it names the factor
+ * challengeWith is the newer API and is better in two ways: it names the factor
  * explicitly rather than "any", and it was verified here to force a fresh
  * challenge on every transaction rather than treating MFA as satisfied for the
  * session.
  *
- * It was abandoned anyway. challengeWith exposes no allowRememberBrowser
- * option, so Auth0 renders "Remember this device for 30 days" on the challenge.
- * Ticking it makes Auth0 skip the challenge and return a token with no "mfa" in
- * amr -- for thirty days. A single user tick silently disables step-up on the
- * one operation it protects. Observed directly: the app's guard kept asking,
- * Auth0 kept declining to challenge, and the browser gave up with a redirect
- * loop.
+ * It was abandoned anyway, because it cannot suppress "Remember this device for
+ * 30 days". Ticking that box makes Auth0 skip the challenge and return a token
+ * with no "mfa" in amr -- for thirty days. One user tick silently disables
+ * step-up on the single operation it protects.
  *
- * api.multifactor.enable is the older API and cannot name a factor, but it
- * takes allowRememberBrowser: false, which removes the checkbox entirely. It is
- * also what Auth0's own step-up documentation uses. "any" is not a real loss
- * here because OTP is the only factor enabled on the tenant (see
- * auth0/terraform/actions.tf), so "any" resolves to OTP.
+ * challengeWith does take a second options argument, but it carries only
+ * additionalFactors and preferredMethod. allowRememberBrowser is absent, and
+ * open Auth0 community requests confirm this is a known gap rather than a
+ * documentation miss.
  *
- * A correct step-up should not be skippable by a checkbox: the point is to
- * re-verify presence at the moment of a sensitive action, which is exactly the
- * case where a remembered device is the wrong answer.
+ *
+ * THE DOCUMENTED ESCAPE HATCH DOES NOT WORK HERE (tested)
+ *
+ * Auth0 documents two ways to force MFA when a remember-browser cookie exists:
+ * allowRememberBrowser false, or sending acr_values=<the MFA policy> to
+ * /authorize. We send acr_values on every step-up, so in principle challengeWith
+ * should have been safe.
+ *
+ * Tested directly: deployed challengeWith, ticked the checkbox, let the app's
+ * TTL lapse, retried. The challenge was skipped and the token came back with no
+ * amr claim at all. acr_values did not override the cookie.
+ *
+ * The likely distinction, which the docs do not draw: the override applies to
+ * Auth0's *native* MFA handling, where acr_values itself triggers the challenge.
+ * Here acr_values triggers nothing on its own -- this Action reads it -- and an
+ * Action-driven challenge does not inherit the override.
+ *
+ * So the two APIs each lack something the other has, and the documented
+ * workaround for the gap does not apply once MFA is customised through Actions.
+ *
+ * "any" is not a real loss: OTP is the only factor enabled on the tenant (see
+ * auth0/terraform/actions.tf), so "any" resolves to OTP, and the factor is still
+ * pinned in version-controlled config -- just in Terraform rather than here.
  */
 
 const MFA_POLICY = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
@@ -47,6 +63,7 @@ exports.onExecutePostLogin = async (event, api) => {
   }
 
   // Enrollment is handled automatically: a user with no factor is prompted to
-  // enroll, so the enrolledFactors branch challengeWith needed is unnecessary.
+  // enroll, so the enrolledFactors branch that challengeWith required is
+  // unnecessary here.
   api.multifactor.enable('any', { allowRememberBrowser: false });
 };
