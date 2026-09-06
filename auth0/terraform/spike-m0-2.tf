@@ -88,7 +88,17 @@ resource "auth0_connection" "spike_custom_db" {
   }
 }
 
-output "spike_m0_2_result" {
-  description = "If this renders, Auth0 accepted passkeys on a no-import custom DB."
-  value       = "PASSKEYS ACCEPTED on ${auth0_connection.spike_custom_db.name} (import_mode=false)"
-}
+/**
+ * NO OUTPUT HERE, DELIBERATELY.
+ *
+ * The first version of this spike printed "PASSKEYS ACCEPTED" on a successful
+ * apply. That was worthless: Auth0 accepts the request and silently drops
+ * fields it will not honour, so apply-success proves nothing. The first run
+ * created a plain Auth0-store connection with enabled_database_customization
+ * still false, custom_scripts empty and authentication_methods absent -- while
+ * reporting success.
+ *
+ * The only trustworthy signal is `terraform plan` converging to "No changes",
+ * which means Auth0 actually persisted what was asked for. A spike's success
+ * criterion has to be something the spike measures, not something it assumes.
+ */
