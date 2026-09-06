@@ -319,8 +319,22 @@ system of record: the Management API or the dashboard.
   runbook as a manual step.
 - Runtime enrollment is still unproven. Configuration being accepted is not the
   same as a passkey ceremony succeeding against a delegated store.
-- The tenant is on a **21-day trial of paid features**. Confirm custom database
-  connections are in the free plan before depending on this past the trial.
+- **Custom Database Connections are a Professional-tier feature.** Auth0's
+  pricing page lists them as "Not available" on Free *and* Essentials. This
+  tenant can use them only because it is inside a paid-features trial, which
+  expires **2026-09-26**. After that the connection stops working and Bonus B
+  breaks — possibly between submission and the walkthrough.
+
+  Passkeys, by contrast, are included on every tier including Free, so the core
+  requirements carry no plan risk. Custom domain, Actions, MFA and SSO are all
+  free-plan features too.
+
+  Consequence: Bonus B is demonstrable, but only inside the trial window, and
+  the README has to say so. The free-plan-permanent alternative is an
+  **Enterprise connection** (the free plan includes one) pointed at an OIDC
+  provider we run over Postgres — a genuinely external store with no plan
+  dependency, at the cost of implementing passkeys ourselves in that IdP rather
+  than getting them from Auth0.
 
 ### Fallback ladder
 
