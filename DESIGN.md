@@ -177,6 +177,38 @@ specific transaction — a nonce carried through `/authorize` and echoed back, o
 Rich Authorization Requests describing the actual transfer. Listed in the README
 under what I would do differently.
 
+### The remember-browser gap (confirmed during M0.3)
+
+Two Auth0 APIs do this job and neither is complete:
+
+| | `challengeWith` | `api.multifactor.enable` |
+| --- | --- | --- |
+| Name a specific factor | yes | no — `'any'` only |
+| Factor sequences / picker control | yes | no |
+| Suppress "Remember this device" | **no** | yes, `allowRememberBrowser: false` |
+| Verified to re-challenge after TTL | yes | yes |
+
+`challengeWith` does accept a second options argument, but it carries only
+`additionalFactors` and `preferredMethod` — `allowRememberBrowser` is absent.
+This is a known gap, not a documentation miss: there are open Auth0 community
+requests titled *"Allow allowRememberBrowser in challengeWith and
+challengeWithAny API"* and *"Allow factor-type restriction together with
+allowRememberBrowser: false in Actions MFA API"*.
+
+The consequence is not cosmetic. With `challengeWith`, ticking the checkbox made
+Auth0 skip the challenge and return a token without `mfa` in `amr` for thirty
+days — a single user action silently disabling step-up on the one operation it
+protects. Observed as a browser redirect loop, since the guard kept asking and
+Auth0 kept declining.
+
+Shipping `api.multifactor.enable`. The `'any'` is acceptable **only because**
+OTP is the sole factor enabled in Guardian, which is itself declared in
+Terraform — so the factor is still pinned in code, just in a different file.
+
+**This forecloses the argument below.** Stepping up with `webauthn-platform`
+requires naming the factor, which requires `challengeWith`. The tension is
+unresolvable on the platform today.
+
 ### A security argument worth raising
 
 If the first factor was a passkey, stepping up with TOTP arguably *lowers*
