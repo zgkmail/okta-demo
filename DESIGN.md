@@ -214,6 +214,13 @@ apply to Auth0's *native* MFA handling, where `acr_values` itself triggers the
 challenge; an Action-driven challenge does not inherit it. The docs do not draw
 that distinction.
 
+**`allowRememberBrowser: false` is retroactive (also tested).** Deploying it
+while a remember-browser cookie was already set still produced a challenge, so
+the flag causes Auth0 to ignore existing cookies rather than merely stop issuing
+new ones. That matters for remediation: shipping the fix protects users who had
+already ticked the box, instead of leaving them bypassing step-up until their
+cookie expires up to thirty days later.
+
 Shipping `api.multifactor.enable`. The `'any'` is acceptable **only because**
 OTP is the sole factor enabled in Guardian, which is itself declared in
 Terraform — so the factor is still pinned in code, just in a different file.
