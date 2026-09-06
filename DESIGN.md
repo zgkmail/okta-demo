@@ -283,28 +283,49 @@ store of record — precisely what "outside of Auth0's default store" rules out.
 It is still worth being able to explain live, since it is what most teams
 actually do.
 
-### M0.2 status: still open
+### M0.2 result: passkeys work on a no-import custom DB
 
-A first attempt looked like a pass and was not. `terraform apply` succeeded on a
-connection declaring `enabled_database_customization = true`, `import_mode =
-false`, `strategy_version = 2` and `authentication_methods.passkey.enabled =
-true` — but the follow-up `terraform plan` showed Auth0 had stored **none** of
-it. The connection was created as a plain Auth0-store database connection with
-customization off, no scripts and no authentication methods, while the API
-reported success.
+Verified in the Auth0 dashboard, on connection `spike-m0-2-custom-db`:
 
-This is the second time in this project Auth0 has accepted a request and
-silently discarded fields (see the `password_policy` note in §7). **Apply-success
-is not evidence that a setting took effect. Only plan convergence is.** Treat
-that as a standing rule for every tenant change here.
+- **Use my own database** — ON
+- **Import Users to Auth0** — OFF
+- Authentication Methods — **Passkey: ACTIVE**, **Password: ACTIVE**
 
-The open question is whether the fields are rejected outright, or merely ignored
-on create and settable on update — the pending plan is an in-place update, so a
-second apply distinguishes the two.
+So the October 2023 guidance is genuinely superseded. Users can live only in the
+external store *and* authenticate with a passkey. **Bonus B is rung 1: a single
+connection.**
+
+**The Terraform provider misreads this state.** `terraform plan` reports
+`enabled_database_customization = false -> true` and wants to re-add the scripts
+and authentication methods on every run, even though Auth0 has all of it stored.
+The diff is a phantom: the provider's *read* is broken, not the write. An apply
+converges nothing and never will.
+
+Worth being precise about the lesson, because the obvious one is wrong. Earlier
+in this project a non-converging plan was taken as proof that Auth0 had silently
+discarded fields, and `password_policy` and `brute_force_protection` were
+removed from §7 on that basis — a diagnosis that may well have been this same
+provider bug. **Neither apply-success nor plan-convergence is evidence about the
+tenant.** Both describe Terraform's model of the world. Confirm against the
+system of record: the Management API or the dashboard.
+
+### Outstanding for M4
+
+- **"Context object in database scripts" must be enabled.** It is a button on
+  the connection's Custom Database tab, and it is the prerequisite for the
+  no-import passkey path — Get User needs `context` to tell an identifier lookup
+  from a `user_id` lookup. `strategy_version = 2` is *not* the control for this;
+  that guess was wrong. The provider exposes no field for it, so it goes in the
+  runbook as a manual step.
+- Runtime enrollment is still unproven. Configuration being accepted is not the
+  same as a passkey ceremony succeeding against a delegated store.
+- The tenant is on a **21-day trial of paid features**. Confirm custom database
+  connections are in the free plan before depending on this past the trial.
 
 ### Fallback ladder
 
-If the configuration cannot be persisted, these remain the options, in order:
+Retained in case runtime enrollment fails at M4, or the trial expires and custom
+database connections turn out not to be in the free plan:
 
 1. **Custom DB, import OFF, passkeys ON.** Fully satisfies both requirements.
 2. **Two connections** — `Main-DB` (Auth0 store, passkeys) for requirement 1 and
