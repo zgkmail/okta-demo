@@ -25,6 +25,36 @@ resource "auth0_connection" "main_db" {
   # A permanently drifting resource is worse than an unset option.
   options {
     disable_signup = false
+
+    # Passkeys require usernames off (or Flexible Identifiers on). The dashboard
+    # states this as a hard constraint on the connection.
+    requires_username = false
+
+    # The core requirement, and it is configuration rather than code: both first
+    # factors are enabled, and Auth0 offers whichever the identified user can
+    # actually use. Neither application knows or cares which one happened.
+    authentication_methods {
+      passkey {
+        enabled = true
+      }
+      password {
+        enabled = true
+      }
+    }
+
+    passkey_options {
+      # Offer the passkey via both browser autofill and an explicit button, so
+      # the demo does not depend on autofill behaving on the day.
+      challenge_ui = "both"
+
+      # Let a user enroll a passkey on the device they are currently using.
+      local_enrollment_enabled = true
+
+      # Invite existing password users to add a passkey. Without this a user who
+      # signed up with a password is never offered one, which makes the
+      # passkey-or-password requirement hard to demonstrate on one account.
+      progressive_enrollment_enabled = true
+    }
   }
 }
 

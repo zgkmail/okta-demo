@@ -13,6 +13,21 @@
  * manual click.
  */
 
+/**
+ * Login experience.
+ *
+ * Both settings are passkey prerequisites, not stylistic choices:
+ *   - Classic Universal Login does not implement the W3C WebAuthn API at all.
+ *   - Passkeys require the Identifier First flow, where the user supplies an
+ *     identifier and Auth0 then decides what proof to ask for. That decision is
+ *     what satisfies "passkey or password as first factor" without either
+ *     application containing a single line of branching logic.
+ */
+resource "auth0_prompt" "login" {
+  universal_login_experience = "new"
+  identifier_first           = true
+}
+
 resource "auth0_tenant" "this" {
   # Top-level attribute, not inside the `flags` block.
   #

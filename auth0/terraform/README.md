@@ -24,6 +24,32 @@ Terraform itself.
    | `create:actions`, `read:actions`, `update:actions`, `delete:actions` | the step-up Action and its post-login trigger binding |
    | `read:guardian_factors`, `update:guardian_factors` | enable the OTP factor |
    | `read:mfa_policies`, `update:mfa_policies` | set the Guardian `policy`. Separate from the factor scopes — enabling a factor and deciding when it is demanded are different permissions, and omitting these fails with `Insufficient scope, expected any of: update:mfa_policies` |
+   | `read:prompts`, `update:prompts` | Identifier First and the Universal Login experience |
+   | `read:tenant_settings`, `update:tenant_settings` | the `customize_mfa_in_postlogin_action` flag |
+
+## Not managed by Terraform
+
+Two settings the provider does not expose. Both go here rather than being
+silently assumed:
+
+- **Relying Party ID.** Tenant Settings → Relying Party IDs. Defaults to the
+  custom domain, which is what we want; passkeys bind to it, and changing it
+  later invalidates every enrolled passkey. There is no provider resource for
+  it.
+- **Context object in database scripts.** A button on a custom database
+  connection's Custom Database tab. Needed for the no-import passkey path at M4.
+  `strategy_version` is *not* this setting.
+
+## Verifying a change actually applied
+
+`terraform apply` succeeding does not mean Auth0 stored what you asked for, and
+a non-converging `terraform plan` does not mean it failed — the provider misread
+`enabled_database_customization` on a custom DB connection and reported a
+permanent phantom diff for a setting Auth0 had stored correctly. Both commands
+describe Terraform's model, not the tenant.
+
+Confirm passkey and MFA changes in the dashboard or via the Management API
+before believing them.
 
 4. Export its credentials. Note this is the **tenant** domain, not the custom
    domain — the Management API lives at the tenant domain:
