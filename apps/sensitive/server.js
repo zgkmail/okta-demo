@@ -39,6 +39,37 @@ const STEP_UP_TTL_MS = Number(process.env.STEP_UP_TTL_SECONDS || 300) * 1000;
  * compare against undefined. `iat` is the issue time of the token minted by the
  * step-up transaction, which is the moment the challenge was satisfied.
  */
+/**
+ * How much life is left on the current step-up.
+ *
+ * Derived by the app, not read off the token: Auth0 says *that* MFA happened
+ * (`amr`) and *when* the token was issued (`iat`); the expiry is entirely our
+ * policy. Shown in the claims table marked with an asterisk so the demo never
+ * implies Auth0 sent it.
+ */
+function stepUpStatus(claims, ttlMs = STEP_UP_TTL_MS) {
+  const ttlSeconds = Math.round(ttlMs / 1000);
+  const amr = Array.isArray(claims.amr) ? claims.amr : [];
+
+  if (!amr.includes('mfa')) {
+    return {
+      name: 'step-up',
+      value: 'not completed',
+      why: `Opening /transfer will trigger an MFA challenge. TTL is ${ttlSeconds}s once satisfied.`,
+    };
+  }
+
+  const remaining = Math.round((ttlMs - (Date.now() - claims.iat * 1000)) / 1000);
+
+  return {
+    name: 'step-up',
+    value: remaining > 0 ? `valid — expires in ${remaining}s` : `expired ${-remaining}s ago`,
+    why:
+      `App-derived from iat + STEP_UP_TTL_SECONDS (${ttlSeconds}s), not a token ` +
+      'claim. Once expired, /transfer challenges again.',
+  };
+}
+
 function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
   return (req, res, next) => {
     const claims = req.oidc.idTokenClaims || {};
@@ -117,6 +148,7 @@ app.get('/', requiresAuth(), (req, res) => {
           'You arrived here without being prompted to log in. Compare the sid ' +
           'below with the Baseline App -- same value, same tenant session.',
       },
+      derived: [stepUpStatus(req.oidc.idTokenClaims || {})],
       actions: [
         { href: '/transfer', label: 'Initiate transfer →', primary: true },
         // Straight to the peer's /login so the reverse direction demonstrates
@@ -170,6 +202,7 @@ app.get('/transfer', requireStepUp(), (req, res) => {
           `Step-up satisfied ${secondsAgo}s ago. amr = [${amr}] — note it now ` +
           'contains "mfa", which it did not on the home page.',
       },
+      derived: [stepUpStatus(claims)],
       actions: [
         { href: '/', label: '← Back' },
         // Ends the tenant session too, which is what resets a step-up for the

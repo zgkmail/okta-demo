@@ -12,12 +12,26 @@ const { auth } = require('express-openid-connect');
 
 // The claims worth pointing at during the walkthrough, and why each matters.
 // Rendered as a table so the demo never depends on someone squinting at raw JSON.
+// `absent` explains a missing claim. Several of these are legitimately absent
+// most of the time, and a bare dash reads like something is broken.
 const KEY_CLAIMS = {
-  sub: 'Auth0 user id',
-  sid: 'Session id -- identical in both apps, which is what proves SSO',
-  auth_time: 'When the first factor was completed',
-  amr: 'Authentication methods; contains "mfa" only right after a step-up',
-  acr: 'Authentication context class reference requested via acr_values',
+  sub: { why: 'Auth0 user id' },
+  sid: { why: 'Session id -- identical in both apps, which is what proves SSO' },
+  auth_time: {
+    why: 'When the first factor was completed',
+    absent:
+      'Absent by design. Auth0 only emits auth_time when the request carries ' +
+      'max_age, and sending that would force re-authentication once the session ' +
+      'aged past it -- breaking SSO. Step-up freshness uses iat instead.',
+  },
+  amr: {
+    why: 'Authentication methods; contains "mfa" only right after a step-up',
+    absent: 'Absent until a step-up challenge is completed. Auth0 omits it entirely.',
+  },
+  acr: {
+    why: 'Authentication context class reference requested via acr_values',
+    absent: 'Absent unless the app asked for a step-up via acr_values.',
+  },
 };
 
 function requiredEnv(name) {
@@ -63,7 +77,7 @@ const fmtEpoch = (n) =>
 
 function keyClaimRows(claims) {
   return Object.entries(KEY_CLAIMS)
-    .map(([name, why]) => {
+    .map(([name, meta]) => {
       let value = claims ? claims[name] : undefined;
       const missing = value === undefined || value === null;
 
@@ -71,12 +85,28 @@ function keyClaimRows(claims) {
       else if (name === 'auth_time') value = fmtEpoch(value);
       else if (Array.isArray(value)) value = value.join(', ');
 
+      const note = missing ? meta.absent || meta.why : meta.why;
+
       return `<tr>
         <th>${esc(name)}</th>
         <td class="v ${missing ? 'missing' : ''}">${esc(value)}</td>
-        <td class="why">${esc(why)}</td>
+        <td class="why">${esc(note)}</td>
       </tr>`;
     })
+    .join('\n');
+}
+
+// Values the app derives rather than reads off the token. Rendered in the same
+// table but marked, so the demo never implies Auth0 sent something it did not.
+function derivedRows(rows) {
+  return rows
+    .map(
+      (r) => `<tr class="derived">
+        <th>${esc(r.name)}</th>
+        <td class="v">${esc(r.value)}</td>
+        <td class="why">${esc(r.why)}</td>
+      </tr>`
+    )
     .join('\n');
 }
 
@@ -84,7 +114,16 @@ function keyClaimRows(claims) {
  * Renders a page. `banner` is {tone, text} where tone is info | warn | ok.
  * `actions` is a list of {href, label, primary}.
  */
-function renderPage({ appName, accent, port, req, banner, actions = [], extra = '' }) {
+function renderPage({
+  appName,
+  accent,
+  port,
+  req,
+  banner,
+  actions = [],
+  extra = '',
+  derived = [],
+}) {
   const authed = req.oidc.isAuthenticated();
   const claims = authed ? req.oidc.idTokenClaims : null;
   const user = authed ? req.oidc.user : null;
@@ -103,7 +142,7 @@ function renderPage({ appName, accent, port, req, banner, actions = [], extra = 
   const body = authed
     ? `<p class="status ok">Signed in as <strong>${esc(user.email || user.sub)}</strong></p>
        <h2>Key claims</h2>
-       <table>${keyClaimRows(claims)}</table>
+       <table>${keyClaimRows(claims)}${derivedRows(derived)}</table>
        <details>
          <summary>Full ID token claims</summary>
          <pre>${esc(JSON.stringify(claims, null, 2))}</pre>
@@ -128,6 +167,8 @@ function renderPage({ appName, accent, port, req, banner, actions = [], extra = 
   th { width: 8.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; }
   td.v { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
   td.v.missing { color: #999; }
+  tr.derived th, tr.derived td { background: #8881; }
+  tr.derived th::after { content: " *"; color: #888; font-weight: 400; }
   td.why { color: #888; font-size: .87rem; }
   pre { background: #8881; padding: .8rem; border-radius: 6px; overflow-x: auto; font-size: .85rem; }
   .btn { display: inline-block; margin: .2rem .4rem .2rem 0; padding: .45rem .9rem;
