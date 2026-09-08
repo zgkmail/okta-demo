@@ -175,9 +175,20 @@ Auth0 has two APIs for demanding MFA from an Action, and **neither is complete**
 
 I started on `challengeWith` — newer, names the factor explicitly, and I
 verified it forces a fresh challenge every transaction. Then I ticked "Remember
-this device for 30 days" during testing, and step-up broke: Auth0 skipped the
-challenge and returned a token with no `mfa` in `amr`, for thirty days. **One
-user tick silently disables step-up on the one operation it protects.**
+this device for 30 days" during testing and step-up stopped working: Auth0
+skipped the challenge and returned a token with no `mfa` in `amr`, for thirty
+days.
+
+Precisely what that means matters, and it depends on how the application
+verifies. Ours requires `amr` to contain `mfa`, so it **fails closed** — the
+user is blocked from `/transfer` rather than let through. So this is a
+**self-inflicted lockout**, not a security bypass: one tick on a checkbox
+presented as a convenience costs a user access to the sensitive operation for up
+to a month, with no recovery short of clearing cookies.
+
+It *would* be a bypass in an implementation that treated a completed round trip
+as proof of MFA. That is the argument for checking `amr` rather than trusting
+the redirect.
 
 `challengeWith` takes an options argument, but it carries only
 `additionalFactors` and `preferredMethod`. There are open Auth0 community
@@ -381,11 +392,27 @@ Auth0 has nothing to render, so it resumes silently and the hint is ignored.
 Requests, or at minimum a nonce tied to the specific transfer. This is the top
 of the list.
 
-**Step up with WebAuthn, not TOTP** — which today means accepting the
-remember-browser exposure, or waiting for `allowRememberBrowser` to land on
-`challengeWith`. Neither is satisfying; in production I would weigh the
-phishing-resistance gain against the bypass risk rather than treating it as a
-config detail.
+**Step up with WebAuthn, not TOTP.** Today that means using `challengeWith`,
+which cannot suppress the remember-device checkbox — so it is a real trade
+rather than a free upgrade:
+
+| | WebAuthn via `challengeWith` | TOTP via `multifactor.enable` |
+| --- | --- | --- |
+| Factor strength | phishing-resistant, matches the passkey first factor | phishable; real-time OTP relay is commodity tooling |
+| Remember-device checkbox | shown, cannot be suppressed | suppressed |
+| Failure mode if ticked | user locked out of `/transfer` for up to 30 days | n/a |
+
+Neither wins on principle. The decision turns on how many users tick a box
+presented as a convenience (not few), how recoverable the lockout is (badly —
+clearing cookies is not something users know to do), how exposed the population
+is to adversary-in-the-middle phishing, and how much the *availability* of the
+operation matters. For money movement, locking legitimate users out is a real
+cost, not a rounding error.
+
+So it needs threat-model and product input, and the answer could reasonably
+differ per user population — an enterprise fleet with managed devices is not a
+consumer base. That is why I would not treat "use the stronger factor" as
+self-evidently correct.
 
 **Back-channel logout** — *the gap this replaced is now fixed; see
 [Coordinated logout](#coordinated-logout) below. What follows is why the

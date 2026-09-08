@@ -20,8 +20,12 @@
  *
  * It was abandoned anyway, because it cannot suppress "Remember this device for
  * 30 days". Ticking that box makes Auth0 skip the challenge and return a token
- * with no "mfa" in amr -- for thirty days. One user tick silently disables
- * step-up on the single operation it protects.
+ * with no "mfa" in amr -- for thirty days.
+ *
+ * The app's guard requires "mfa" in amr, so it fails closed: the effect is that
+ * a user locks themselves out of /transfer for a month, not that they slip
+ * through. A lockout rather than a bypass -- but caused by ticking a checkbox
+ * presented as a convenience, which is not an acceptable thing to ship either.
  *
  * challengeWith does take a second options argument, but it carries only
  * additionalFactors and preferredMethod. allowRememberBrowser is absent, and
