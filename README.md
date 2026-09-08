@@ -40,7 +40,7 @@ cd ../.. && npm run dev
 - Sensitive App — http://sensitive.littlecap.biz:3001
 
 Those hostnames resolve to `127.0.0.1` via `/etc/hosts`; nothing is exposed
-publicly. Running this against a different tenant means substituting your own
+publicly. They are deliberately not `localhost` — [why](#why-not-localhost). Running this against a different tenant means substituting your own
 domain — `littlecap.biz` is baked into the Terraform defaults, and passkeys
 require a **custom domain**, which requires a domain you control DNS for. That
 last prerequisite has no workaround: Auth0 will not bind a Relying Party ID to a
