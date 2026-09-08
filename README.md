@@ -366,10 +366,15 @@ Reproducible in four steps, and it looks like broken SSO until you trace it:
 Step 4 is correct. Step 3 is the defect: logout is global at Auth0 but local at
 each app, so the two disagree about whether the user is signed in.
 
-Worse, `requireStepUp` reads `amr` and `iat` from the token stored in that
-cookie, so a recently completed step-up keeps `/transfer` reachable for the rest
-of its TTL *after* the user has logged out and the tenant session is gone. The
-guard consults a stored token, not Auth0.
+**Worse, and verified by test: logging out does not revoke access to the
+sensitive operation.** `requireStepUp` reads `amr` and `iat` from the token
+stored in that cookie, so a completed step-up keeps `/transfer` reachable — with
+no challenge — for the remainder of its TTL *after* the user has logged out and
+the tenant session is destroyed. The guard consults a stored token; it never
+asks Auth0 whether the session still exists.
+
+That is the sharpest consequence of self-contained cookie sessions: the
+application's view of authorization outlives the authorization itself.
 
 The fix is OIDC Back-Channel Logout: Auth0 POSTs a signed logout token carrying
 the `sid` to each client's registered endpoint, server-to-server, and each app
