@@ -126,8 +126,10 @@ transaction, including ones Auth0 resumes from an existing session.** That is
 what allows a second factor to be demanded without re-authenticating the first.
 
 Ordinary logins carry no `acr_values` and fall straight through, so the Baseline
-App stays single-factor. Guardian policy is `never` for the same reason — MFA is
-not a blanket rule, the Action decides per transaction.
+App stays single-factor. The tenant's MFA policy is `never` for the same reason —
+MFA is not a blanket rule, the Action decides per transaction. (Auth0 calls its
+MFA subsystem *Guardian*; it is where the available second factors and that
+policy are declared.)
 
 ## Key decisions
 
@@ -193,10 +195,32 @@ distinction.
 
 So I traded the better API for the one that cannot be silently switched off by
 an end user. A step-up exists to re-verify presence at the moment of a sensitive
-action, which is precisely when "trust this device" is the wrong answer. The
-`'any'` is acceptable only because OTP is the sole factor enabled in Guardian —
-so the factor is still pinned in version control, just in Terraform rather than
-in the Action.
+action, which is precisely when "trust this device" is the wrong answer.
+
+What `'any'` costs, precisely. It means "challenge with whatever factor is
+enabled on the tenant" rather than naming one. *Guardian* is Auth0's MFA
+subsystem — the `auth0_guardian` resource, and Dashboard → Security →
+Multi-factor Auth — and it is where the available factors are declared. Ours
+enables OTP and nothing else:
+
+```hcl
+resource "auth0_guardian" "mfa" {
+  policy        = "never"   # no blanket MFA; the Action decides per transaction
+  otp           = true
+  email         = false     # excluded by the exercise
+  recovery_code = false
+}
+```
+
+So `'any'` can only resolve to OTP, and the factor remains deterministic and
+version-controlled — just declared in `actions.tf` rather than at the point of
+use in the Action.
+
+The genuine cost is an **implicit coupling between two files**. Enable a second
+factor in Guardian and the step-up factor changes silently, with no edit to the
+Action and nothing in the step-up code to hint at it. `challengeWith({type:
+'otp'})` names the factor where it is used and cannot drift that way. That is a
+real maintainability loss, accepted to close a real security hole.
 
 One useful thing did come out of it: `allowRememberBrowser: false` is
 **retroactive**. Deploying it while a cookie was already set still produced a
