@@ -139,8 +139,19 @@ prompting.
 
 Two details that make or break it:
 
-- **Never send `prompt=login`** on this path. The `/signup` route is the one
-  deliberate exception.
+- **Never send `prompt=login`** on this path. It is the OIDC parameter that tells
+  Auth0 to disregard any existing session and re-authenticate the user. The
+  session still exists — you have just instructed Auth0 not to use it — so SSO
+  appears broken while the cause is a single request parameter. It would also
+  spoil the step-up, which resumes the session precisely so that only the
+  *second* factor is challenged.
+
+  `max_age` is the same mistake in different clothing: `max_age=0` forces
+  re-authentication outright, and any small value does so once the session ages
+  past it.
+
+  `/signup` is the one deliberate exception, because there the intent *is* to
+  avoid reusing the session — you are creating a different account.
 - **The receiving app has to actually initiate `/authorize`.** A resumed session
   does nothing on its own. The Sensitive App's home route uses `requiresAuth()`;
   without it the page rendered "Not signed in" while a perfectly good session
