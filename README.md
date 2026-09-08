@@ -497,7 +497,7 @@ consumer base. That is why I would not treat "use the stronger factor" as
 self-evidently correct.
 
 **Back-channel logout** — *the gap this replaced is now fixed; see
-[Coordinated logout](#coordinated-logout) below. What follows is why the
+[Coordinated logout](#coordinated-logout) under Trade-offs. What follows is why the
 standard solution was not used.*
 
 OIDC Back-Channel Logout is the correct answer: Auth0 POSTs a signed logout
