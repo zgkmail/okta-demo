@@ -34,10 +34,9 @@ app.get('/', (req, res) => {
         { href: '/claims.json', label: 'Raw claims (JSON)' },
         { href: '/logout', label: 'Log out' },
       ]
-    : [
-        { href: '/login', label: 'Log in', primary: true },
-        { href: '/signup', label: 'Sign up' },
-      ];
+    // No Sign up button: Auth0's own login screen already offers one, and
+    // duplicating it here just gives two paths to the same place.
+    : [{ href: '/login', label: 'Log in', primary: true }];
 
   const banner = authed
     ? {
@@ -58,6 +57,10 @@ app.get('/', (req, res) => {
   );
 });
 
+// Kept but no longer linked from the UI: Auth0's login screen has its own Sign
+// up link. Useful directly by URL when you need a signup screen while already
+// holding a session, which the "Sign up" link on the login page cannot give you.
+//
 // Same /authorize call as /login, but New Universal Login opens on the signup
 // screen.
 //
