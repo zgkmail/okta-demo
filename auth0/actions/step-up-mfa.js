@@ -66,8 +66,27 @@ exports.onExecutePostLogin = async (event, api) => {
     return;
   }
 
-  // Enrollment is handled automatically: a user with no factor is prompted to
-  // enroll, so the enrolledFactors branch that challengeWith required is
-  // unnecessary here.
+  // ⚠ UNDER TEST: do the two APIs compose?
+  //
+  // Auth0 guidance states that calling api.multifactor.enable with
+  // allowRememberBrowser:false *before* api.authentication.challengeWith
+  // removes the remember-device checkbox while still letting challengeWith name
+  // the factor. An open feature request asserts the opposite -- that the two
+  // capabilities are split across two methods with no way to combine them.
+  //
+  // If this works we get both: an explicitly named factor AND no checkbox,
+  // which also reopens webauthn-platform as the step-up factor.
+  // If it does not, revert to enable() alone.
+  //
+  // Order matters per the guidance: enable() first.
   api.multifactor.enable('any', { allowRememberBrowser: false });
+
+  const enrolled = event.user.enrolledFactors ?? [];
+  const hasOtp = enrolled.some((factor) => factor.type === 'otp');
+
+  if (hasOtp) {
+    api.authentication.challengeWith({ type: 'otp' });
+  } else {
+    api.authentication.enrollWith({ type: 'otp' });
+  }
 };
