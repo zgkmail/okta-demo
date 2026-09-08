@@ -69,10 +69,21 @@ terraform plan
 terraform apply
 ```
 
-### One-time import: the Google connection
+### One-time imports: the inherited connections
 
-`auth0_connection_clients` is authoritative, and the provider refuses to take
-ownership of a connection that already has clients enabled:
+Auth0 auto-enables **both** its stock connections — `google-oauth2` and
+`Username-Password-Authentication` — on every client created through the
+Management API. Neither is asked for, and both silently widen what the apps
+accept:
+
+- `google-oauth2` adds a third first factor the exercise never called for.
+- `Username-Password-Authentication` *shadows* `okta-demo-db`. Identifier First
+  cannot disambiguate two database connections from an email, so logins resolve
+  to the stock one and every passkey setting on `okta-demo-db` becomes
+  unreachable while looking perfectly correct in the dashboard.
+
+`auth0_connection_clients` is authoritative and refuses to adopt a connection
+that already has clients:
 
 ```
 Error: Connection with non empty enabled clients
@@ -80,17 +91,20 @@ The connection already has enabled clients attached to it. Import the resource
 instead in order to proceed with the changes.
 ```
 
-Auth0 auto-enables `google-oauth2` on every newly created client, so this fires
-on a fresh tenant. Import it once, then apply:
+Import each once — the connection id is printed in the error — then apply:
 
 ```sh
-terraform import auth0_connection_clients.google <connection_id>   # con_...
+terraform import auth0_connection_clients.google     <con_id_from_error>
+terraform import auth0_connection_clients.default_db <con_id_from_error>
 terraform apply
 ```
 
-The connection id is printed in the error message. The import brings the
-existing enabled clients into state; the empty `enabled_clients` in
-`connection.tf` then removes them.
+The import brings the existing enabled clients into state; the empty
+`enabled_clients` then removes them.
+
+**Users created in the stock connection become unreachable** once no application
+is enabled on it. They still exist under User Management, but nothing can
+authenticate them. Sign up again on `okta-demo-db`.
 
 Then write the application `.env` files directly from the outputs, so no secret
 is ever copied through a clipboard or a terminal scrollback:
