@@ -354,6 +354,18 @@ the Auth0 tenant session, but leaves the *other* app's local session intact —
 different origin, nothing tells it. That app keeps rendering as signed in until
 its own session expires or something forces it to redirect.
 
+Reproducible in four steps, and it looks like broken SSO until you trace it:
+
+1. Log in at the Baseline App, then open the Sensitive App — SSO, no prompt.
+2. **Log out of the Sensitive App.** This also ends the Auth0 tenant session.
+3. Open the Baseline App — still signed in, no prompt. It is serving a cached
+   view of a session that no longer exists upstream; its home route never
+   contacts Auth0.
+4. Open the Sensitive App — asked to log in.
+
+Step 4 is correct. Step 3 is the defect: logout is global at Auth0 but local at
+each app, so the two disagree about whether the user is signed in.
+
 Worse, `requireStepUp` reads `amr` and `iat` from the token stored in that
 cookie, so a recently completed step-up keeps `/transfer` reachable for the rest
 of its TTL *after* the user has logged out and the tenant session is gone. The
