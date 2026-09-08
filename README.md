@@ -218,9 +218,18 @@ use in the Action.
 
 The genuine cost is an **implicit coupling between two files**. Enable a second
 factor in Guardian and the step-up factor changes silently, with no edit to the
-Action and nothing in the step-up code to hint at it. `challengeWith({type:
-'otp'})` names the factor where it is used and cannot drift that way. That is a
-real maintainability loss, accepted to close a real security hole.
+Action and nothing in the step-up code to hint at it.
+
+It is not even a coin toss: Auth0 challenges by a fixed precedence order —
+**Security Key > Push > OTP > Phone > Email > Recovery Code** — among the
+factors the user is enrolled in. So adding Push to Guardian would quietly demote
+OTP and make Push the default step-up factor, decided by Auth0's ordering rather
+than by anything in this repository. (Users can still switch via "Try Another
+Method".)
+
+`challengeWith({type: 'otp'})` names the factor where it is used and cannot
+drift that way. That is a real maintainability loss, accepted to close a real
+security hole.
 
 One useful thing did come out of it: `allowRememberBrowser: false` is
 **retroactive**. Deploying it while a cookie was already set still produced a
