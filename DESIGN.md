@@ -117,7 +117,23 @@ Things that matter:
   selects what Auth0 renders *when the user must authenticate*; with an active
   session there is nothing to render, so Auth0 resumes silently and the hint is
   ignored.
-- Session lifetimes live in Tenant Settings → Advanced (inactivity + absolute).
+- **Three independent session clocks**, worth keeping straight:
+
+  | Layer | Idle | Absolute |
+  | --- | --- | --- |
+  | Auth0 tenant session (SSO) — Tenant Settings → Advanced | 3 days | 7 days |
+  | Each app's local cookie — `express-openid-connect` defaults | 1 day (rolling) | 7 days |
+  | Step-up validity — our policy | — | 5 min |
+
+  Default session policy is Persistent, so sessions survive a browser restart.
+  If an app's local cookie expires while the tenant session lives, the app
+  silently re-authorizes and the user sees nothing — that is SSO working. If the
+  tenant session expires, credentials are required again.
+
+  `max_age` is not one of these clocks. It is a per-request assertion that the
+  *first factor* be no older than N seconds, and sending it on the SSO path
+  would force precisely the re-prompt the requirement forbids. That is why it is
+  absent, and why `auth_time` is absent with it.
 - **Demo instrument:** both apps render their decoded ID token. The `sid` claim
   is identical across the two apps, which is the cleanest possible proof that
   one tenant session is backing both.
