@@ -1,23 +1,23 @@
 # Auth0 SSO + Step-Up Exercise
 
-Two web applications sharing a single Auth0 tenant, where users authenticate
-with a passkey or a password, move between the apps without re-authenticating,
-and are challenged for a second factor before one specific sensitive operation.
+Two web applications on one Auth0 tenant. Users authenticate with a passkey or a
+password, move between the apps without re-authenticating, and are challenged for
+a second factor before one specific sensitive operation.
 
-Tenant configuration lives in Terraform. `DESIGN.md` carries the reasoning and
-the full record of what was tested; this file is the summary.
+Tenant configuration is Terraform. `DESIGN.md` carries the full reasoning and
+test record; this file is the summary.
 
 ## Status
 
 | Requirement | State |
 | --- | --- |
-| Passkey **or** password as first factor | Done — passkey enrolled at signup, both methods active on the connection |
-| SSO between the two apps | Done — verified by identical `sid` across apps, no re-prompt |
+| Passkey **or** password as first factor | Done — passkey enrolled at signup, both methods active |
+| SSO between the two apps | Done — verified by identical `sid`, no re-prompt |
 | Step-up on a sensitive operation, non-email factor | Done — TOTP on `/transfer`, no first-factor re-prompt |
 | Bonus A — native app | Not attempted |
 | Bonus B — external user store | Designed and spiked, not built. See [Bonus items](#bonus-items) |
 
-Everything above was verified against the live tenant, not just applied.
+Everything above was verified against the live tenant, not merely applied.
 
 ## Running it
 
@@ -28,7 +28,6 @@ npm install
 # localhost -- see Key decisions.
 echo "127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz" | sudo tee -a /etc/hosts
 
-# Tenant config, and the app .env files rendered from its outputs
 cd auth0/terraform
 terraform init && terraform apply
 terraform output -raw baseline_env  > ../../apps/baseline/.env
@@ -40,26 +39,17 @@ cd ../.. && npm run dev
 - Baseline App — http://baseline.littlecap.biz:3000
 - Sensitive App — http://sensitive.littlecap.biz:3001
 
-Those hostnames are deliberately not `localhost` — see
-[why](#why-not-localhost). They resolve to `127.0.0.1` through `/etc/hosts`; the
-apps are not exposed publicly.
-
-**Running this against a different tenant** means substituting your own domain
-throughout. `littlecap.biz` is hard-coded in the Terraform variable defaults and
-in the `/etc/hosts` line above, and passkeys need a **custom domain** on the
-tenant, which needs a domain you control DNS for. That is the one prerequisite
-that cannot be worked around: Auth0 will not bind a Relying Party ID to a
+Those hostnames resolve to `127.0.0.1` via `/etc/hosts`; nothing is exposed
+publicly. Running this against a different tenant means substituting your own
+domain — `littlecap.biz` is baked into the Terraform defaults, and passkeys
+require a **custom domain**, which requires a domain you control DNS for. That
+last prerequisite has no workaround: Auth0 will not bind a Relying Party ID to a
 `*.auth0.com` domain.
 
 ### What Terraform cannot do
 
-Four steps need doing by hand. Listed here rather than left to be discovered
-halfway through an apply:
-
-1. **A custom domain on the tenant.** Passkeys bind to a Relying Party ID and
-   Auth0 will not use a `*.auth0.com` domain for it. Register a domain, add the
-   CNAME Auth0 gives you, wait for verification. This is the long pole — DNS can
-   take minutes to hours.
+1. **A custom domain on the tenant.** Register a domain, add the CNAME Auth0
+   gives you, wait for verification. The long pole — DNS can take hours.
 2. **The bootstrap M2M application.** Terraform needs Management API credentials
    and cannot create its own. Scopes are in `auth0/terraform/README.md`; the one
    people miss is `read:client_keys`, without which client secrets come back
@@ -67,554 +57,399 @@ halfway through an apply:
 3. **Two `terraform import`s.** `auth0_connection_clients` is authoritative and
    refuses to adopt a connection that already has clients. Auth0 auto-enables
    `google-oauth2` *and* `Username-Password-Authentication` on every client it
-   creates, so both need importing once before they can be emptied. The
-   connection ids are printed in the error message.
+   creates, so both must be imported before they can be emptied. Connection ids
+   are printed in the error.
 4. **The `/etc/hosts` entry** above.
 
-One further setting is *checked* rather than set: the **Relying Party ID**
-(Tenant Settings → Relying Party IDs) should already show the custom domain.
-There is no provider resource for it, and changing it later invalidates every
-enrolled passkey.
+One setting is *checked* rather than set: the **Relying Party ID** (Tenant
+Settings → Relying Party IDs) should already show the custom domain. No provider
+resource exists for it, and changing it later invalidates every enrolled passkey.
 
-`auth0/terraform/README.md` has the full scope list and the import commands.
-
-### The demo path
-
-1. **Sign up** at the Baseline App. Auth0 offers passkey creation directly.
-2. **Log out, log back in** — Auth0 now offers the passkey rather than a password.
-3. Click **Open Sensitive App**. You arrive signed in, no prompt. The `sid` claim
-   is identical in both apps — that is the SSO proof, and both pages render it.
-4. Click **Initiate transfer**. A TOTP challenge appears with *no* password or
-   passkey re-prompt: the session is resumed, only the second factor is demanded.
-5. On the transfer page, `amr` now contains `mfa`, which it did not on the home
-   page moments earlier.
+Note `terraform plan` never reaches "No changes" — see
+[Findings](#findings).
 
 ### Browser support
 
-The applications themselves impose almost nothing: the pages are server-rendered
-HTML with **no client-side JavaScript**, and the only notable CSS is
-`color-scheme` and `<details>`. They need cookies and the ability to follow
-redirects. The password path therefore works in any current browser.
-
-The real requirement is on **Auth0's login page**, not on these apps, because
-that is where the WebAuthn ceremony runs. The passkey path needs WebAuthn with
-either a platform authenticator or the cross-device (hybrid/QR) flow. You can
-check the former from any page's console:
-
-```js
-await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-```
+The apps are server-rendered HTML with **no client-side JavaScript**; they need
+cookies and redirects, nothing more. The password path works anywhere. The
+WebAuthn requirement lives on Auth0's login page, not here.
 
 | | Status |
 | --- | --- |
-| Chrome 151, macOS | **Tested.** Passkey enrolled and used, plus SSO and step-up |
-| Safari, macOS | **Tested.** Passkey login works with the credential enrolled in Chrome |
-| Edge, other Chromium | Untested. Same engine and WebAuthn support as Chrome, so both paths are expected to work |
-| Firefox | Untested. WebAuthn works; passkey and conditional-UI support has historically lagged, so the passkey path is the least certain |
-| Anything without WebAuthn | Password path only |
+| Chrome 151, macOS | **Tested** — passkey enrolled and used, plus SSO and step-up |
+| Safari, macOS | **Tested** — passkey login using the credential enrolled in Chrome |
+| Edge, other Chromium | Untested; same engine and WebAuthn support as Chrome |
+| Firefox | Untested; WebAuthn works but passkey and conditional-UI support has lagged |
 
-Chrome and Safari were actually exercised; the rest is inference from platform
-support, not verification.
+The Safari result is worth more than a row: the passkey was **enrolled in Chrome
+and used in Safari**. It lives in iCloud Keychain rather than a browser profile
+or the machine — which is also why this hardware having no Touch ID never
+mattered.
 
-Worth noting what the Safari result demonstrates: the passkey was **enrolled in
-Chrome and used in Safari**. It is stored in iCloud Keychain rather than bound
-to a browser profile or to the machine — which is also why the absence of Touch
-ID on this hardware never mattered. That portability is the practical argument
-for passkeys over device-bound credentials, and it is worth showing rather than
-asserting.
+Cookie policy is not a factor: SSO is redirect-based, so the Auth0 session cookie
+is first-party when read. Third-party cookie blocking breaks *iframe-based*
+silent authentication, which this architecture does not use.
 
-Two things reduce the exposure. `challenge_ui = "both"` renders an explicit
-"Continue with a passkey" button alongside autofill, so a browser with weak
-conditional-mediation support still has a working entry point. And passwords
-remain enabled on the connection, so any browser retains a usable first factor.
+### The demo path
 
-Third-party cookie policy is not a factor here: SSO is redirect-based, so the
-Auth0 session cookie is first-party at the moment it is read. It is
-iframe-based silent authentication that cookie blocking breaks, and this
-architecture does not use it.
+1. **Sign up** at the Baseline App — Auth0 offers passkey creation directly.
+2. **Log out, log back in** — click "Continue with a passkey" on the identifier
+   screen. Both factors are offered there; submitting an email selects the
+   password branch and there is no route back.
+3. **Open Sensitive App** — signed in, no prompt, identical `sid`. Both pages
+   render it.
+4. **Initiate transfer** — a TOTP challenge with *no* password or passkey
+   re-prompt. On arrival `amr` contains `mfa`, which it did not moments earlier.
 
 ## What was built
 
 ```
 apps/baseline/     Express, :3000 — ordinary app, exists to prove SSO
 apps/sensitive/    Express, :3001 — same auth, plus step-up on /transfer
-apps/common/       shared auth config and the token-claim viewer
+apps/common/       shared auth config, claim viewer, coordinated logout
 auth0/terraform/   clients, connection, Action, MFA, tenant flags
 auth0/actions/     the step-up Action, as a real .js file
 ```
 
-Node and Express with `express-openid-connect`, chosen so that as little as
-possible sits between the code and the OIDC mechanics being evaluated. Both apps
-render their decoded ID token, which makes the demo self-evidencing rather than
+Node and Express with `express-openid-connect`, chosen to put as little as
+possible between the code and the OIDC mechanics being evaluated. Both apps
+render their decoded ID token, so the demo evidences itself rather than being
 narrated.
 
-The applications are deliberately thin. Neither contains a single line of
-branching logic about passkeys versus passwords, and neither knows how the
-second factor was satisfied. All of that lives in the tenant.
+Neither app contains branching logic about passkeys versus passwords, and
+neither knows how the second factor was satisfied. That all lives in the tenant.
 
 ## How each requirement is met
 
 All three behaviours come from the **same `/authorize` endpoint and the same
-client**. The only thing that differs is what the application asks for:
+client**. Only the requested parameters differ:
 
 | Flow | Parameters sent | Result |
 | --- | --- | --- |
 | SSO navigation | *(none)* | Session resumed, no prompt |
-| Step-up | `acr_values=…/pape/policies/2007/06/multi-factor` | Session resumed; **second** factor challenged, first factor not |
-| Signup | `screen_hint=signup` + `prompt=login` | Session deliberately ignored; new account created |
+| Step-up | `acr_values=…/multi-factor` | Session resumed; **second** factor challenged, first not |
+| Signup | `screen_hint=signup` + `prompt=login` | Session deliberately ignored; new account |
 
-Neither application implements SSO, and neither implements MFA. They differ only
-in what they request, and the tenant decides the rest. That is also why
-`prompt=login` on the first row would silently disable single sign-on, and why
-`screen_hint` on the third is inert without `prompt=login` beside it.
+Neither application implements SSO, and neither implements MFA.
 
-### Passkey or password
+**Passkey or password.** Configuration only: New Universal Login (Classic has no
+WebAuthn), the Identifier First flow, and one database connection with both
+`passkey` and `password` enabled. The user supplies an identifier and Auth0
+decides what proof to demand. Passkeys additionally require the custom domain,
+because they bind to a Relying Party ID.
 
-Configuration, not code. New Universal Login (Classic has no WebAuthn), the
-Identifier First flow, and one database connection with both `passkey` and
-`password` enabled as authentication methods. The user supplies an identifier
-and Auth0 decides what proof to demand.
-
-Passkeys additionally require a **custom domain** — they bind to a WebAuthn
-Relying Party ID, and Auth0 will not use a `*.auth0.com` domain for it. The
-tenant runs on `auth.littlecap.biz`; the applications stay local, because the
-WebAuthn ceremony is served from Auth0's login page, not from the app origin.
-
-### SSO
-
-Both apps are clients of the same tenant using Authorization Code with
+**SSO.** Both apps are clients of one tenant using Authorization Code with
 full-page redirects. The first login sets Auth0's session cookie on the custom
 domain; the second app's `/authorize` finds it and returns a code without
-prompting.
+prompting. Two things make or break it:
 
-Two details that make or break it:
+- **Never send `prompt=login`** on this path. It tells Auth0 to disregard the
+  existing session, so SSO appears broken while the cause is one request
+  parameter. `max_age` is the same mistake in different clothing. `/signup` is
+  the deliberate exception, because there the intent *is* to avoid reusing the
+  session.
+- **The receiving app must actually initiate `/authorize`.** A resumed session
+  does nothing alone. The Sensitive App's home route uses `requiresAuth()`;
+  without it the page rendered "Not signed in" while a valid session sat unused —
+  indistinguishable from broken SSO.
 
-- **Never send `prompt=login`** on this path. It is the OIDC parameter that tells
-  Auth0 to disregard any existing session and re-authenticate the user. The
-  session still exists — you have just instructed Auth0 not to use it — so SSO
-  appears broken while the cause is a single request parameter. It would also
-  spoil the step-up, which resumes the session precisely so that only the
-  *second* factor is challenged.
+**Step-up.** The sensitive operation is initiating a funds transfer at
+`/transfer`.
 
-  `max_age` is the same mistake in different clothing: `max_age=0` forces
-  re-authentication outright, and any small value does so once the session ages
-  past it.
-
-  `/signup` is the one deliberate exception, because there the intent *is* to
-  avoid reusing the session — you are creating a different account.
-- **The receiving app has to actually initiate `/authorize`.** A resumed session
-  does nothing on its own. The Sensitive App's home route uses `requiresAuth()`;
-  without it the page rendered "Not signed in" while a perfectly good session
-  sat unused — indistinguishable from SSO being broken.
-
-Worth knowing: redirect-based SSO is unaffected by Safari ITP and third-party
-cookie blocking, because the cookie is first-party on the Auth0 domain at the
-moment it is read. What those break is iframe-based silent authentication, which
-SPAs use and this architecture does not.
-
-### Step-up
-
-The sensitive operation is **initiating a funds transfer** at `/transfer` in the
-Sensitive App.
-
-1. `requireStepUp` middleware checks the ID token for `amr` containing `mfa`,
-   fresh within a TTL (default 5 minutes).
-2. On a miss it redirects to `/authorize` with
-   `acr_values=http://schemas.openid.net/pape/policies/2007/06/multi-factor`,
-   and deliberately **no** `prompt` parameter.
+1. `requireStepUp` checks the ID token for `amr` containing `mfa`, fresh within a
+   TTL (default 5 minutes).
+2. On a miss it redirects to `/authorize` with `acr_values`, and deliberately no
+   `prompt`.
 3. Auth0 resumes the session — no password or passkey — and a post-login Action
    sees the `acr_values` and demands MFA.
-4. The user completes TOTP. The new ID token carries `amr` including `mfa`.
+4. The new ID token carries `amr` including `mfa`.
 
 The mechanism rests on one fact: **post-login Actions run on every authorization
 transaction, including ones Auth0 resumes from an existing session.** That is
 what allows a second factor to be demanded without re-authenticating the first.
-
-Ordinary logins carry no `acr_values` and fall straight through, so the Baseline
-App stays single-factor. The tenant's MFA policy is `never` for the same reason —
-MFA is not a blanket rule, the Action decides per transaction. (Auth0 calls its
-MFA subsystem *Guardian*; it is where the available second factors and that
-policy are declared.)
+Ordinary logins carry no `acr_values` and fall through, so the Baseline App stays
+single-factor. The tenant's MFA policy is `never` for the same reason — MFA is
+not a blanket rule, the Action decides per transaction. (Auth0 calls its MFA
+subsystem *Guardian*; that is where available factors and the policy are
+declared.)
 
 ## Key decisions
 
-Where the exercise left things open, these are the calls I made.
+**The sensitive operation is a funds transfer** — concrete, obviously sensitive,
+easy to narrate.
 
-**The sensitive operation is a funds transfer.** Concrete, obviously sensitive,
-and easy to narrate.
+**The step-up factor is TOTP.** Non-email as required, free, works with any
+authenticator app. WebAuthn is *available* and would be stronger; see
+[trade-offs](#trade-offs).
 
-**The step-up factor is TOTP.** Non-email as required, costs nothing, works with
-any authenticator app. The more interesting question is why *not* WebAuthn —
-see the trade-offs below.
-
-**Step-up freshness comes from the ID token's `iat`, not `auth_time`.** Auth0
-only emits `auth_time` when the request carries `max_age`, so a freshness check
-built on it would silently compare against `undefined`. `iat` is the issue time
-of the token minted by the step-up transaction, which is the moment the
-challenge was satisfied.
+**Freshness comes from the ID token's `iat`, not `auth_time`.** Auth0 only emits
+`auth_time` when the request carries `max_age`, so a check built on it would
+silently compare against `undefined`. `iat` is the issue time of the token minted
+by the step-up transaction.
 
 <a id="why-not-localhost"></a>
 **The apps run on real hostnames, not `localhost`.** Auth0 classifies `localhost`
 and custom URI schemes as *non-verifiable* callbacks and shows a confirmation
-screen even for first-party applications — `is_first_party` does not suppress
-it. Ordinary hostnames mapped to `127.0.0.1` make the callback verifiable and the
-interstitial disappears. Verified against a freshly created user, since Auth0
-stores consent per user and an existing account would have masked the result.
+screen even for first-party applications — `is_first_party` does not suppress it.
+Ordinary hostnames make the callback verifiable and the interstitial disappears.
+Verified against a freshly created user, since Auth0 stores consent per user and
+an existing account would have masked the result.
+
+**Each app gets its own session secret.** Sharing one would make the two local
+sessions interchangeable and quietly fake the thing the SSO demo proves.
 
 **Tenant configuration is Terraform**, with the Action kept as a real `.js` file
-rather than a heredoc so it stays lintable. Two settings the provider does not
-expose — the Relying Party ID and custom-DB context-object support — are
-documented as manual steps rather than silently assumed.
+so it stays lintable. The settings Terraform cannot reach are documented above
+rather than silently assumed.
 
 ## Trade-offs
 
-### `api.multifactor.enable` over `challengeWith` — the significant one
+### Both MFA APIs are called, because each lacks what the other has
 
-Auth0 has two APIs for demanding MFA from an Action, and **neither is complete**.
+Auth0 offers two ways to demand MFA from an Action:
 
-| | `challengeWith` | `api.multifactor.enable` |
+| | `api.multifactor.enable` | `api.authentication.challengeWith` |
 | --- | --- | --- |
-| Name a specific factor | yes | no — `'any'` only |
-| Factor sequences / picker control | yes | no |
-| Suppress "Remember this device" | **no** | yes |
-| Re-challenges after the TTL | yes (verified) | yes (verified) |
+| Suppress "Remember this device" | yes, `allowRememberBrowser: false` | **no** |
+| Name a specific factor | **no** — `'any'`, `'duo'`, `'google-authenticator'`, `'guardian'` | yes |
 
-I started on `challengeWith` — newer, names the factor explicitly, and I
-verified it forces a fresh challenge every transaction. Then I ticked "Remember
-this device for 30 days" during testing and step-up stopped working: Auth0
-skipped the challenge and returned a token with no `mfa` in `amr`, for thirty
-days.
+Calling `enable()` **first**, then `challengeWith`, gives both. Verified end to
+end: checkbox gone, factor named, and the challenge still fires once the app's
+TTL lapses.
 
-Precisely what that means matters, and it depends on how the application
-verifies. Ours requires `amr` to contain `mfa`, so it **fails closed** — the
-user is blocked from `/transfer` rather than let through. So this is a
-**self-inflicted lockout**, not a security bypass: one tick on a checkbox
-presented as a convenience costs a user access to the sensitive operation for up
-to a month, with no recovery short of clearing cookies.
+This was not obvious. An open Auth0 community feature request asserts the two
+capabilities cannot be combined; separate Auth0 guidance describes exactly this
+composition. The guidance is correct — but only testing settled it, and I had
+already shipped the weaker single-API version on the assumption that the feature
+request was right.
 
-It *would* be a bypass in an implementation that treated a completed round trip
-as proof of MFA. That is the argument for checking `amr` rather than trusting
-the redirect.
+**Why the checkbox matters.** Ticking it makes Auth0 skip the challenge and
+return a token with no `mfa` in `amr`, for thirty days. Our guard *requires*
+`mfa`, so it fails closed: the user is locked out of `/transfer` for a month
+rather than let through. A lockout, not a bypass — but caused by a checkbox
+presented as a convenience, which is not shippable either way. It *would* be a
+bypass in an implementation that treated a completed round trip as proof of MFA,
+which is the argument for verifying `amr` rather than trusting the redirect.
 
-`challengeWith` takes an options argument, but it carries only
-`additionalFactors` and `preferredMethod`. There are open Auth0 community
-requests asking for `allowRememberBrowser` there, so this is a known platform
-gap rather than something I failed to find.
+**The documented escape hatch does not work.** Auth0 says you can force MFA past
+a remember-browser cookie either with `allowRememberBrowser: false` *or* by
+sending `acr_values`. Every step-up already sends `acr_values`. Tested directly —
+the challenge was skipped and the token came back with no `amr` claim at all. The
+override appears to apply only to Auth0's *native* MFA handling, where
+`acr_values` itself triggers the challenge; an Action-driven challenge does not
+inherit it. The docs draw no such distinction.
 
-Auth0's documentation offers an escape hatch: when a remember-browser cookie
-exists, either set `allowRememberBrowser: false` **or** send `acr_values` to
-`/authorize`. We were already sending `acr_values`. **It does not work.** I
-tested it directly — deployed `challengeWith`, ticked the box, let the TTL
-lapse — and the challenge was skipped. The override appears to apply only to
-Auth0's native MFA handling, where `acr_values` itself triggers the challenge;
-an Action-driven challenge does not inherit it. The docs draw no such
-distinction.
+One useful side finding: `allowRememberBrowser: false` is **retroactive**.
+Deploying it while a cookie was already set still produced a challenge, so the
+fix remediates already-affected users rather than leaving them bypassing for a
+month.
 
-So I traded the better API for the one that cannot be silently switched off by
-an end user. A step-up exists to re-verify presence at the moment of a sensitive
-action, which is precisely when "trust this device" is the wrong answer.
+### WebAuthn would be a stronger step-up factor
 
-What `'any'` costs, precisely. It means "challenge with whatever factor is
-enabled on the tenant" rather than naming one. *Guardian* is Auth0's MFA
-subsystem — the `auth0_guardian` resource, and Dashboard → Security →
-Multi-factor Auth — and it is where the available factors are declared. Ours
-enables OTP and nothing else:
+The design argues that stepping up with TOTP after a *passkey* first factor is an
+assurance downgrade — phishing-resistant to phishable. With `challengeWith`
+available, `webauthn-platform` is a genuine option rather than a foreclosed one.
+TOTP was kept deliberately:
 
-```hcl
-resource "auth0_guardian" "mfa" {
-  policy        = "never"   # no blanket MFA; the Action decides per transaction
-  otp           = true
-  email         = false     # excluded by the exercise
-  recovery_code = false
-}
-```
+- The current path is enrolled, tested and working. Switching means re-enrolling
+  and re-verifying days before the walkthrough.
+- There is a real question whether a platform authenticator as *second* factor
+  after a synced passkey *first* factor is two factors or the same authenticator
+  twice. The defensible framing is that step-up is about **re-verifying presence
+  at the moment of a sensitive action**, not factor independence — which makes a
+  fresh phishing-resistant check ideal. But that is a different argument from
+  "use the stronger factor", and worth making deliberately.
 
-So `'any'` can only resolve to OTP, and the factor remains deterministic and
-version-controlled — just declared in `actions.tf` rather than at the point of
-use in the Action.
-
-The genuine cost is an **implicit coupling between two files**. Enable a second
-factor in Guardian and the step-up factor changes silently, with no edit to the
-Action and nothing in the step-up code to hint at it.
-
-It is not even a coin toss: Auth0 challenges by a fixed precedence order —
-**Security Key > Push > OTP > Phone > Email > Recovery Code** — among the
-factors the user is enrolled in. So adding Push to Guardian would quietly demote
-OTP and make Push the default step-up factor, decided by Auth0's ordering rather
-than by anything in this repository. (Users can still switch via "Try Another
-Method".)
-
-`challengeWith({type: 'otp'})` names the factor where it is used and cannot
-drift that way. That is a real maintainability loss, accepted to close a real
-security hole.
-
-One useful thing did come out of it: `allowRememberBrowser: false` is
-**retroactive**. Deploying it while a cookie was already set still produced a
-challenge, so the fix remediates already-affected users rather than leaving them
-bypassing step-up for a month.
+For production I would weigh phishing exposure against enrollment friction with
+threat-model input, and the answer could differ per user population.
 
 ### Step-up is bound to time, not to the transaction
 
 Within the TTL, one challenge authorizes *any* sensitive action. Step up for a
-$10 transfer and a $10,000 transfer needs no new challenge for the next five
-minutes. With several sensitive routes, one challenge would cover all of them.
+$10 transfer and a $10,000 transfer needs no new challenge for five minutes.
 
 **Why it is built this way.** The requirement is to gate *access to an
-operation*, and a time-bounded step-up satisfies that. Transaction binding is a
-strictly stronger property that was not asked for — and it is not a setting to
-switch on.
-
-Auth0's step-up primitives are session-scoped: `acr_values` → Action → `amr`
-tells you MFA occurred *in this authentication transaction*, never that it
-occurred *for this specific transfer*. The platform feature that does bind them
-is Rich Authorization Requests under Auth0's **Highly Regulated Identity**
-feature set, which is a distinct offering aimed at regulated finance rather than
-something enabled on a development tenant.
+operation*, which a time-bounded step-up satisfies. Transaction binding is
+strictly stronger and was not asked for — and it is not a setting. Auth0's
+step-up primitives are session-scoped: `acr_values` → Action → `amr` says MFA
+occurred *in this authentication*, never *for this transfer*. The feature that
+binds them is Rich Authorization Requests under Auth0's **Highly Regulated
+Identity** offering.
 
 Rolling it by hand means a server-side store of pending transactions, carrying
-the transaction id through `/authorize`, an Action echoing it into a custom
-claim, then verifying the returned token matches *that* transaction, marking it
-single-use, and handling expiry and replay. That is a meaningful build for a
-property the exercise did not ask for, so I bounded the exposure instead: a
-short TTL, configurable, with the guard applied to both `GET` and `POST` so it
+the id through `/authorize`, an Action echoing it into a custom claim, then
+verifying, marking single-use, and handling replay. So I bounded the exposure
+instead: a short configurable TTL, with the guard on both `GET` and `POST` so it
 cannot be skipped by posting directly.
 
 The honest framing is that **time is the wrong axis**, not that five minutes is
-the wrong number. This is the largest gap between what is here and what I would
-ship.
-
-### Passkey first factor, TOTP second factor — an assurance downgrade
-
-If the first factor was a passkey, stepping up with TOTP arguably *lowers*
-assurance: phishing-resistant to phishable. The defensible answer is to step up
-with `webauthn-platform`, so the second factor is at least as strong as the
-first.
-
-**That answer requires `challengeWith`**, because it means naming a factor. The
-remember-browser decision above forecloses it. The two constraints are
-genuinely irreconcilable on the platform today, and I would rather state that
-than pretend the TOTP choice was unexamined.
+the wrong number.
 
 ### Coordinated logout
 
-Each app holds a self-contained encrypted session cookie. Logging out of one
-cleared that cookie and ended the Auth0 tenant session, but left the *other*
-app's cookie untouched — different origin, nothing told it. Two consequences,
-both observed:
+Each app holds a self-contained encrypted cookie. Logging out of one cleared that
+cookie and ended the tenant session but left the *other* app's cookie untouched.
+Two consequences, both observed:
 
-- The other app kept rendering as signed in, serving a cached view of a session
-  that no longer existed upstream. Traced from the outside this looks like
-  broken SSO; it is logout being global at Auth0 and local at each app.
+- The other app kept rendering as signed in — a cached view of a session that no
+  longer existed upstream. From outside this looks like broken SSO; it is logout
+  being global at Auth0 and local at each app.
 - **Logout did not revoke access to the sensitive operation.** `requireStepUp`
   reads `amr` and `iat` from the stored token, so a completed step-up kept
-  `/transfer` reachable with no challenge for the remainder of its TTL *after*
-  logout. Verified by test. The guard consults a stored token; it never asks
-  Auth0 whether the session still exists.
+  `/transfer` reachable with no challenge for the rest of its TTL *after* logout.
+  Verified by test.
 
 That is the sharp edge of self-contained cookie sessions: the application's view
 of authorization outlives the authorization.
 
-Since back-channel logout is not reachable in a local-only deployment, `/logout`
-now hand-rolls front-channel logout as a redirect chain:
+OIDC Back-Channel Logout is the correct fix, and `express-openid-connect`
+implements it — but it is server-to-server, so **Auth0 must reach the app over
+the network**. These apps resolve only via `/etc/hosts` to `127.0.0.1`. So
+`/logout` hand-rolls front-channel logout instead:
 
 ```
-A /logout  ->  B /logout/local?returnTo=A/logout/federated
-               (B destroys its own session)
-           ->  A /logout/federated
-               (SDK destroys A's session, then Auth0 ends the tenant session)
+A /logout  ->  B /logout/local?returnTo=A/logout/federated   (B clears its session)
+           ->  A /logout/federated                            (A clears, then Auth0)
 ```
 
-`routes.logout` moves the SDK's federated logout to `/logout/federated` so the
-chain can wrap it rather than reimplement it. `returnTo` on `/logout/local` is
-allowlisted to the peer origin — without that it is an open redirect.
-
-Honest limits, and why this is a workaround rather than the answer: it only
-works for a known, fixed set of clients, and it fails if the peer is
-unreachable, because the chain cannot complete. Back-Channel Logout has neither
-problem.
-
-### Each app gets its own session secret
-
-Sharing one would make the two local sessions interchangeable and quietly fake
-the thing the SSO demo is meant to prove.
+`routes.logout` moves the SDK's federated logout aside so the chain wraps it
+rather than reimplementing it. `returnTo` is allowlisted to the peer origin —
+without that it is an open redirect. Honest limits: it only works for a known,
+fixed set of clients, and it fails if the peer is unreachable. Back-Channel
+Logout has neither problem.
 
 ## Findings
 
-These came out of building it, and several cost real time. They are the part of
-this exercise I would most want to talk through.
+These came out of building it, and several cost real time.
 
 **Auth0 fills the negative space with defaults, and the defaults win.** Clients
-created through the Management API are auto-enabled on `google-oauth2` *and* on
-`Username-Password-Authentication`. The first added a first factor the exercise
-never asked for. The second was worse: both apps ended up with two database
-connections, Identifier First cannot disambiguate two of them from an email, and
-logins resolved to the stock connection — making the entire passkey
-configuration on our connection unreachable.
+created through the Management API are auto-enabled on `google-oauth2` *and*
+`Username-Password-Authentication`. The first added a first factor nobody asked
+for. The second was worse: both apps ended up with two database connections,
+Identifier First cannot disambiguate two of them from an email, and logins
+resolved to the stock connection — making the entire passkey configuration on our
+connection unreachable.
 
 Nothing errored. Every setting checked out in the dashboard: Passkey ACTIVE,
-prerequisites READY, RP ID mapped, progressive enrollment on. The only signal
-was the `Connection` column in the tenant logs reading
+prerequisites READY, RP ID mapped, progressive enrollment on. The only signal was
+the `Connection` column in the tenant logs reading
 `Username-Password-Authentication` where it should have read `okta-demo-db`.
 **Declaring configuration is not the same as owning it** — anything that must
 *not* be enabled has to be stated explicitly.
 
-**Terraform's report is about Terraform, not about the tenant.** Early on, an
-apply reported success while Auth0 had stored none of a custom-DB
-configuration. Later, a plan reported a permanent diff for settings Auth0 had
-stored correctly. I drew the wrong conclusion from each in turn. Neither
-apply-success nor plan-convergence is evidence; the dashboard or the Management
-API is.
+**Terraform's report is about Terraform, not about the tenant.** An apply once
+reported success while Auth0 had stored none of a custom-DB configuration. A plan
+later reported a permanent diff for settings Auth0 had stored correctly. I drew
+the wrong conclusion from each in turn.
 
-The live example ships with this repo: `terraform plan` permanently proposes
-re-adding `authentication_methods` and `passkey_options` to `okta-demo-db`. The
-provider cannot read them back. That the configuration is genuinely applied is
-not an inference — a passkey was enrolled and used to authenticate in two
-browsers. Left unsuppressed on purpose; `ignore_changes` would quiet the plan by
-blinding it to drift in exactly the settings carrying the core requirement.
+This ships with the repo: `terraform plan` permanently proposes re-adding
+`authentication_methods` and `passkey_options` to `okta-demo-db`, because the
+provider cannot read them back. That the config is genuinely applied is not an
+inference — a passkey was enrolled and used in two browsers. Left unsuppressed
+deliberately; `ignore_changes` would quiet the plan by blinding it to drift in
+the settings carrying the core requirement.
 
 **A guard that redirects on a claim the IdP controls needs a termination
-condition.** When remember-browser suppressed the challenge, `requireStepUp`
-kept redirecting and the browser gave up with "too many redirects". It now marks
-the attempt and fails closed with an explanation. This was my bug, and it would
-have shipped.
+condition.** When remember-browser suppressed the challenge, `requireStepUp` kept
+redirecting until the browser gave up with "too many redirects". It now marks the
+attempt and fails closed with an explanation. My bug, and it would have shipped.
 
 **`dotenv` does not overwrite existing environment variables.** The Terraform
 bootstrap uses `AUTH0_CLIENT_ID`/`AUTH0_CLIENT_SECRET` for its M2M application.
-Running the apps from that same shell made them authenticate *as the Terraform
-app* — surfacing only as "Callback URL mismatch", because every other parameter
-was correct. The tenant log's `client_name` was what gave it away. Both apps now
-load `.env` with `override: true` and print their active `client_id` at startup.
+Running the apps from that shell made them authenticate *as the Terraform app* —
+surfacing only as "Callback URL mismatch", because every other parameter was
+correct. The tenant log's `client_name` gave it away. Both apps now load `.env`
+with `override: true` and print their active `client_id` at startup.
 
 **`challengeWith` is gated behind a tenant flag.**
 `customize_mfa_in_postlogin_action` is off by default. Without it the Action
 deploys cleanly and the flow dies only on the redirect back, as a raw stack
 trace — it reads like an application bug.
 
-**`amr` is absent, not merely incomplete, when no fresh authentication
-occurred.** Auth0's docs note it is missing on refresh-token and silent-auth
-reissues; in practice the claim is omitted wholesale. So the app records that
-step-up happened rather than re-reading `amr` per request.
+**Claims are absent, not empty, when there was no fresh authentication.** `amr`
+is omitted wholesale rather than lacking `mfa`, and `auth_time` never appears
+without `max_age`. Both are legitimately blank most of the time, so the claim
+viewer explains each rather than showing a bare dash.
 
-**`screen_hint=signup` needs `prompt=login` beside it.** With an active session
-Auth0 has nothing to render, so it resumes silently and the hint is ignored.
+**Three independent session clocks.** Tenant session 3 days idle / 7 absolute;
+each app's cookie 1 day rolling / 7 absolute; step-up 5 minutes. `max_age` is not
+one of them — it is a per-request freshness assertion, and sending it on the SSO
+path would force the re-prompt the requirement forbids.
 
 ## What I would do differently
 
-**Bind step-up to the transaction rather than to time.** Rich Authorization
-Requests, or at minimum a nonce tied to the specific transfer. This is the top
-of the list.
+**Bind step-up to the transaction, not to time.** Top of the list.
 
-**Step up with WebAuthn, not TOTP.** Today that means using `challengeWith`,
-which cannot suppress the remember-device checkbox — so it is a real trade
-rather than a free upgrade:
-
-| | WebAuthn via `challengeWith` | TOTP via `multifactor.enable` |
-| --- | --- | --- |
-| Factor strength | phishing-resistant, matches the passkey first factor | phishable; real-time OTP relay is commodity tooling |
-| Remember-device checkbox | shown, cannot be suppressed | suppressed |
-| Failure mode if ticked | user locked out of `/transfer` for up to 30 days | n/a |
-
-Neither wins on principle. The decision turns on how many users tick a box
-presented as a convenience (not few), how recoverable the lockout is (badly —
-clearing cookies is not something users know to do), how exposed the population
-is to adversary-in-the-middle phishing, and how much the *availability* of the
-operation matters. For money movement, locking legitimate users out is a real
-cost, not a rounding error.
-
-So it needs threat-model and product input, and the answer could reasonably
-differ per user population — an enterprise fleet with managed devices is not a
-consumer base. That is why I would not treat "use the stronger factor" as
-self-evidently correct.
-
-**Back-channel logout** — *the gap this replaced is now fixed; see
-[Coordinated logout](#coordinated-logout) under Trade-offs. What follows is why the
-standard solution was not used.*
-
-OIDC Back-Channel Logout is the correct answer: Auth0 POSTs a signed logout
-token carrying the `sid` to each client's registered endpoint, server-to-server,
-and each app destroys the matching session. Auth0 supports it, and
-`express-openid-connect` implements it.
-
-It is unavailable here for a structural reason rather than an effort one.
-Back-channel logout is server-to-server, so **Auth0 must reach the application
-over the network**. These apps resolve only through `/etc/hosts` to `127.0.0.1`,
-so Auth0 cannot POST to them without a public tunnel or a deployment. It also
-requires a server-side session store keyed by `sid`, since there is no browser
-to clear a cookie on — easy to add, but moot given the reachability problem.
-
-For a deployed system this is what I would use, and the front-channel chain
-below would be deleted.
+**Back-channel logout**, which needs the apps deployed somewhere Auth0 can reach,
+plus a server-side session store. The front-channel chain would then be deleted.
 
 **Terraform state hygiene.** State holds client secrets in cleartext. A real
 setup would use a remote encrypted backend and the `client_secret_wo` write-only
-argument so secrets never enter state.
+argument.
 
-**Real error handling.** The apps render stack traces on failure. Fine for a
-demo, not for anything else.
+**Real error handling.** The apps render stack traces on failure.
 
-**Recovery codes** are disabled to keep enrollment to one screen. Without them a
-lost authenticator means an administrator reset.
+**Recovery codes**, currently disabled to keep enrollment to one screen. Without
+them a lost authenticator means an administrator reset.
 
-**Verification in CI.** Given how often Auth0 reported success without applying
-anything, I would want a post-apply check that reads settings back from the
+**Post-apply verification in CI.** Given how often Auth0 reported success without
+applying anything, I would want a check that reads settings back from the
 Management API and asserts on them.
 
 ## Bonus items
 
-**A — native app: not attempted.** With more time I would use Expo with
-`react-native-auth0`, Authorization Code with PKCE through
-`ASWebAuthenticationSession` rather than an embedded webview, and reuse the same
-Action unchanged — the step-up policy lives in the tenant, so the mobile client
-would only need to send the same `acr_values`. Because that session shares the
-Safari cookie jar, SSO with the web apps would work on iOS as a side effect.
+**A — native app: not attempted.** I would use Expo with `react-native-auth0`,
+Authorization Code with PKCE through `ASWebAuthenticationSession` rather than an
+embedded webview, and reuse the same Action unchanged — the step-up policy lives
+in the tenant, so a mobile client need only send the same `acr_values`. Since
+that session shares the Safari cookie jar, SSO with the web apps would work on
+iOS as a side effect.
 
-**B — external user store: designed and spiked, not built.** The intended
-approach is a Custom Database Connection over Postgres with **user import
-disabled**, so credentials never enter Auth0's store.
+**B — external user store: designed and spiked, not built.** The approach is a
+Custom Database Connection over Postgres with **user import disabled**, so
+credentials never enter Auth0's store.
 
-Two things are worth reporting even though it is not implemented.
+Two things are worth reporting regardless. Auth0's widely-cited 2023 guidance
+says custom databases and passkeys are mutually exclusive; **that is out of
+date** — a spike confirmed a connection with `import_mode = false` and Passkey
+ACTIVE, so users can live entirely in an external store *and* use passkeys. The
+two-connection workaround the older guidance implies is unnecessary.
 
-Auth0's widely-cited 2023 guidance says custom databases and passkeys are
-mutually exclusive. **That is out of date** — a spike confirmed a connection
-with `import_mode = false` and Passkey ACTIVE, so users can live entirely in an
-external store *and* use passkeys. Bonus B does not need the two-connection
-workaround the older guidance implies.
-
-However, **Custom Database Connections are a Professional-tier feature** —
-listed as unavailable on Free *and* Essentials. This tenant can use them only
-inside a paid-features trial. A free-tier-permanent alternative is an Enterprise
-connection (the free plan includes one) pointed at an OIDC provider running over
-the same Postgres — genuinely external, no plan dependency, at the cost of
+However, **Custom Database Connections are Professional-tier** — listed as
+unavailable on Free *and* Essentials. This tenant has them only inside a
+paid-features trial expiring 2026-09-26. A free-tier-permanent alternative is an
+Enterprise connection (the free plan includes one) pointed at an OIDC provider
+over the same Postgres: genuinely external, no plan dependency, at the cost of
 implementing passkeys in that IdP rather than getting them from Auth0.
 
 Had I built it, I would have kept it on a **separate connection** from the core
-requirement, so a trial-tier, Early-Access dependency could not take down a
-graded requirement. Not because one connection cannot do both — the spike proved
-it can — but as deliberate blast-radius isolation.
+requirement — not because one connection cannot do both, since the spike proved
+it can, but as deliberate blast-radius isolation of a trial-tier, Early-Access
+dependency from a graded requirement.
 
 ## Where AI was used
 
-Throughout, and as the primary working method rather than an occasional
-assistant. This was Claude Code driving a terminal and a browser, with me
-directing.
+Throughout, as the primary working method rather than an occasional assistant:
+Claude Code driving a terminal and a browser, with me directing.
 
-- **Research.** Auth0's documentation is large and, in several places here,
-  wrong or out of date. The passkey/custom-DB reversal, the `challengeWith`
-  remember-browser gap and its open feature requests, and the non-verifiable
-  callback rule all came from directed searching rather than from memory.
-- **Writing the configuration and application code**, including the Terraform,
-  the Action, and the step-up middleware.
-- **Debugging**, which is where it earned the most. The shadowed-connection bug
-  and the `dotenv` credential collision were both found by reading tenant logs
-  and reasoning about the discrepancy, not by guessing.
-- **Verification**, by driving Chrome directly — checking the login screens, the
-  connection settings, the Relying Party IDs, and the enrolled passkey in the
+- **Research.** Auth0's documentation is large and in several places here wrong
+  or out of date. The passkey/custom-DB reversal, the remember-browser gap, and
+  the non-verifiable callback rule all came from directed searching.
+- **Writing** the Terraform, the Action, and the step-up middleware.
+- **Debugging**, where it earned the most. The shadowed connection and the
+  `dotenv` credential collision were both found by reading tenant logs and
+  reasoning about the discrepancy.
+- **Verification**, by driving Chrome directly — checking login screens,
+  connection settings, Relying Party IDs and the enrolled passkey in the
   dashboard rather than trusting that an apply had worked.
 
-Two things I would flag about the process. Several conclusions were wrong on the
-first pass and corrected by testing — the `acr_values` override, whether Auth0
-had persisted the custom-DB configuration, and my own claim that a successful
-`terraform plan` proved the credentials worked. The empirical checks mattered
-more than the initial reasoning. And the most valuable findings here came from
-*building and breaking* the thing, not from reading about it — ticking a
-checkbox nobody asked about is what exposed the remember-browser hole.
+Two honest notes on the process. Several conclusions were wrong on the first pass
+and corrected only by testing — that `acr_values` overrides remember-browser,
+that Auth0 had discarded the custom-DB configuration, that the two MFA APIs could
+not be combined, and that a successful `terraform plan` proved credentials
+worked. The empirical checks mattered more than the initial reasoning, and the
+composition finding in particular was shipped wrong before it was tested.
+
+And the most valuable findings came from *building and breaking* the thing rather
+than reading about it. Ticking a checkbox nobody asked about is what exposed the
+remember-browser behaviour, the redirect loop, and the missing loop guard.
