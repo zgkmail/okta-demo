@@ -88,6 +88,32 @@ data "auth0_connection" "google" {
   hide_client_secret = true
 }
 
+/**
+ * Disable the tenant's stock database connection.
+ *
+ * Same inherited-default trap as google-oauth2 above: Auth0 auto-enables
+ * Username-Password-Authentication on clients created through the Management
+ * API. Both apps therefore had TWO database connections enabled, and Auth0
+ * resolved logins to the stock one -- so passkeys, which are configured on
+ * okta-demo-db, were never reachable. Every setting was correct; it was on a
+ * connection nobody was using.
+ *
+ * Identifier First cannot disambiguate two database connections from an email
+ * alone, so the fix is to leave exactly one enabled rather than to make the apps
+ * pass `connection=`.
+ *
+ * Note this orphans any user created in the stock connection -- they exist, but
+ * no application can reach them.
+ */
+data "auth0_connection" "default_db" {
+  name = "Username-Password-Authentication"
+}
+
+resource "auth0_connection_clients" "default_db" {
+  connection_id   = data.auth0_connection.default_db.id
+  enabled_clients = []
+}
+
 # Authoritative on purpose. An empty list disables Google for EVERY application
 # in the tenant, including the stock "Default App" -- which is the intent, not a
 # side effect.
