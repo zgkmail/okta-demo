@@ -84,6 +84,16 @@ screen — do not type the email and press Continue. `challenge_ui = "both"` is
 what puts that button there; with `autofill` alone the demo would depend on the
 browser's autofill behaving on the day.
 
+There is **no way back** from the password screen to the passkey option, and no
+in-page back control. Browser back does return to the identifier screen, but
+Auth0 has a known bug where the Continue button is left disabled afterwards — so
+if the demo overshoots, restart the transaction by hitting the app's `/login`
+again rather than going back.
+
+The passkey button only renders once the passkey path is actually available. It
+was absent on this tenant before the first passkey was enrolled, which on a
+fresh tenant looks indistinguishable from a misconfiguration.
+
 ### The shadowed-connection bug, and why it was hard to see
 
 Passkeys silently did nothing at first. Every setting was correct and every one
