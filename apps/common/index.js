@@ -63,6 +63,62 @@ function authConfig() {
       response_type: 'code',
       scope: 'openid profile email',
     },
+    routes: {
+      // Move the SDK's federated logout aside. /logout is ours and orchestrates
+      // the peer first -- see mountCoordinatedLogout.
+      logout: '/logout/federated',
+    },
+  });
+}
+
+/**
+ * Coordinated logout across both apps.
+ *
+ * The problem: each app holds its own self-contained session cookie. Logging
+ * out of one clears that cookie and ends the Auth0 tenant session, but the
+ * other app keeps serving a valid session from its own cookie -- including,
+ * verifiably, access to /transfer for the remainder of the step-up TTL. The
+ * application's view of authorization outlives the authorization.
+ *
+ * The standard fix is OIDC Back-Channel Logout, and this SDK implements it.
+ * It is unavailable here for a structural reason: back-channel logout is
+ * server-to-server, so Auth0 must reach the application over the network. These
+ * apps resolve only through /etc/hosts to 127.0.0.1, so Auth0 cannot POST to
+ * them without a public tunnel.
+ *
+ * So this is hand-rolled front-channel logout: a redirect chain that visits the
+ * peer's local-logout endpoint before completing our own federated logout.
+ *
+ *   A /logout  ->  B /logout/local?returnTo=A/logout/federated
+ *                  (B destroys its own session)
+ *              ->  A /logout/federated
+ *                  (SDK destroys A's session, then Auth0 ends the tenant session)
+ *
+ * Honest limits: it only works for a known, fixed set of clients, and it fails
+ * if the peer is unreachable, because the chain cannot complete. Back-Channel
+ * Logout has neither problem, which is why it is the standard.
+ */
+function mountCoordinatedLogout(app, { baseUrl, peerUrl }) {
+  // Clears only this app's session, then hands control back to the caller.
+  app.get('/logout/local', (req, res) => {
+    const returnTo = String(req.query.returnTo || '');
+
+    // Allowlist. Without this, returnTo is an open redirect: anyone could send
+    // a user to /logout/local?returnTo=https://evil.example and have this app
+    // bounce them there.
+    if (!returnTo.startsWith(`${peerUrl}/`)) {
+      return res.status(400).type('text').send('returnTo must be on the peer origin');
+    }
+
+    // Same mechanism the SDK's own logout uses to destroy a session.
+    req.appSession = undefined;
+    return res.redirect(returnTo);
+  });
+
+  // The user-facing logout: peer first, then ourselves and the tenant session.
+  app.get('/logout', (req, res) => {
+    const back = `${baseUrl}/logout/federated`;
+    return res.redirect(`${peerUrl}/logout/local?returnTo=${encodeURIComponent(back)}`);
   });
 }
 
@@ -195,4 +251,11 @@ ${extra}
 </body></html>`;
 }
 
-module.exports = { authConfig, renderPage, requiredEnv, esc, KEY_CLAIMS };
+module.exports = {
+  authConfig,
+  mountCoordinatedLogout,
+  renderPage,
+  requiredEnv,
+  esc,
+  KEY_CLAIMS,
+};

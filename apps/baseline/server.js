@@ -17,13 +17,20 @@
 require('dotenv').config({ override: true });
 
 const express = require('express');
-const { authConfig, renderPage, requiredEnv } = require('@okta-demo/common');
+const {
+  authConfig,
+  mountCoordinatedLogout,
+  renderPage,
+  requiredEnv,
+} = require('@okta-demo/common');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const PEER_URL = requiredEnv('PEER_URL');
+const BASE_URL = requiredEnv('BASE_URL');
 
 app.use(authConfig());
+mountCoordinatedLogout(app, { baseUrl: BASE_URL, peerUrl: PEER_URL });
 
 app.get('/', (req, res) => {
   const authed = req.oidc.isAuthenticated();

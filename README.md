@@ -278,6 +278,44 @@ remember-browser decision above forecloses it. The two constraints are
 genuinely irreconcilable on the platform today, and I would rather state that
 than pretend the TOTP choice was unexamined.
 
+### Coordinated logout
+
+Each app holds a self-contained encrypted session cookie. Logging out of one
+cleared that cookie and ended the Auth0 tenant session, but left the *other*
+app's cookie untouched — different origin, nothing told it. Two consequences,
+both observed:
+
+- The other app kept rendering as signed in, serving a cached view of a session
+  that no longer existed upstream. Traced from the outside this looks like
+  broken SSO; it is logout being global at Auth0 and local at each app.
+- **Logout did not revoke access to the sensitive operation.** `requireStepUp`
+  reads `amr` and `iat` from the stored token, so a completed step-up kept
+  `/transfer` reachable with no challenge for the remainder of its TTL *after*
+  logout. Verified by test. The guard consults a stored token; it never asks
+  Auth0 whether the session still exists.
+
+That is the sharp edge of self-contained cookie sessions: the application's view
+of authorization outlives the authorization.
+
+Since back-channel logout is not reachable in a local-only deployment, `/logout`
+now hand-rolls front-channel logout as a redirect chain:
+
+```
+A /logout  ->  B /logout/local?returnTo=A/logout/federated
+               (B destroys its own session)
+           ->  A /logout/federated
+               (SDK destroys A's session, then Auth0 ends the tenant session)
+```
+
+`routes.logout` moves the SDK's federated logout to `/logout/federated` so the
+chain can wrap it rather than reimplement it. `returnTo` on `/logout/local` is
+allowlisted to the peer origin — without that it is an open redirect.
+
+Honest limits, and why this is a workaround rather than the answer: it only
+works for a known, fixed set of clients, and it fails if the peer is
+unreachable, because the chain cannot complete. Back-Channel Logout has neither
+problem.
+
 ### Each app gets its own session secret
 
 Sharing one would make the two local sessions interchangeable and quietly fake
@@ -349,43 +387,24 @@ remember-browser exposure, or waiting for `allowRememberBrowser` to land on
 phishing-resistance gain against the bypass risk rather than treating it as a
 config detail.
 
-**Back-channel logout.** Logging out of one app clears its own cookie and ends
-the Auth0 tenant session, but leaves the *other* app's local session intact —
-different origin, nothing tells it. That app keeps rendering as signed in until
-its own session expires or something forces it to redirect.
+**Back-channel logout** — *the gap this replaced is now fixed; see
+[Coordinated logout](#coordinated-logout) below. What follows is why the
+standard solution was not used.*
 
-Reproducible in four steps, and it looks like broken SSO until you trace it:
+OIDC Back-Channel Logout is the correct answer: Auth0 POSTs a signed logout
+token carrying the `sid` to each client's registered endpoint, server-to-server,
+and each app destroys the matching session. Auth0 supports it, and
+`express-openid-connect` implements it.
 
-1. Log in at the Baseline App, then open the Sensitive App — SSO, no prompt.
-2. **Log out of the Sensitive App.** This also ends the Auth0 tenant session.
-3. Open the Baseline App — still signed in, no prompt. It is serving a cached
-   view of a session that no longer exists upstream; its home route never
-   contacts Auth0.
-4. Open the Sensitive App — asked to log in.
+It is unavailable here for a structural reason rather than an effort one.
+Back-channel logout is server-to-server, so **Auth0 must reach the application
+over the network**. These apps resolve only through `/etc/hosts` to `127.0.0.1`,
+so Auth0 cannot POST to them without a public tunnel or a deployment. It also
+requires a server-side session store keyed by `sid`, since there is no browser
+to clear a cookie on — easy to add, but moot given the reachability problem.
 
-Step 4 is correct. Step 3 is the defect: logout is global at Auth0 but local at
-each app, so the two disagree about whether the user is signed in.
-
-**Worse, and verified by test: logging out does not revoke access to the
-sensitive operation.** `requireStepUp` reads `amr` and `iat` from the token
-stored in that cookie, so a completed step-up keeps `/transfer` reachable — with
-no challenge — for the remainder of its TTL *after* the user has logged out and
-the tenant session is destroyed. The guard consults a stored token; it never
-asks Auth0 whether the session still exists.
-
-That is the sharpest consequence of self-contained cookie sessions: the
-application's view of authorization outlives the authorization itself.
-
-The fix is OIDC Back-Channel Logout: Auth0 POSTs a signed logout token carrying
-the `sid` to each client's registered endpoint, server-to-server, and each app
-destroys the matching session. Auth0 supports it — `auth0_client` exposes
-`oidc_backchannel_logout_urls`.
-
-It is not a config flag, though. Back-channel logout requires a **server-side
-session store keyed by `sid`**, because there is no browser to clear a cookie
-on. These apps use `express-openid-connect`'s default self-contained encrypted
-cookies, so there is nothing server-side to revoke. Doing this properly means
-introducing a session store first.
+For a deployed system this is what I would use, and the front-channel chain
+below would be deleted.
 
 **Terraform state hygiene.** State holds client secrets in cleartext. A real
 setup would use a remote encrypted backend and the `client_secret_wo` write-only

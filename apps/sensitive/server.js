@@ -15,11 +15,18 @@ require('dotenv').config({ override: true });
 
 const express = require('express');
 const { requiresAuth } = require('express-openid-connect');
-const { authConfig, renderPage, requiredEnv, esc } = require('@okta-demo/common');
+const {
+  authConfig,
+  mountCoordinatedLogout,
+  renderPage,
+  requiredEnv,
+  esc,
+} = require('@okta-demo/common');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 const PEER_URL = requiredEnv('PEER_URL');
+const BASE_URL = requiredEnv('BASE_URL');
 
 const MFA_POLICY = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor';
 
@@ -122,6 +129,7 @@ function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
 }
 
 app.use(authConfig());
+mountCoordinatedLogout(app, { baseUrl: BASE_URL, peerUrl: PEER_URL });
 
 /**
  * requiresAuth() is what makes SSO legible here.
