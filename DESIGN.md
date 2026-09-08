@@ -69,6 +69,21 @@ branching logic in two separate apps.
 (`SYNCED`, so held in a cloud keychain rather than bound to the machine — the
 Mac mini's lack of Touch ID turned out to be irrelevant).
 
+**Both factors are offered on the *identifier* screen, not after it.** Autofill
+and the "Continue with a passkey" button both sit beside the email field; the
+second screen is where proof is given for whichever path was chosen, and
+submitting an identifier selects the password branch.
+
+That is inherent to passkeys rather than an Auth0 quirk: passkeys are
+discoverable credentials, so the authenticator supplies the user handle and the
+ceremony runs *before* Auth0 knows who the user is. Typing an identifier is the
+thing a passkey exists to avoid.
+
+Demo consequence: to show passkey login, use the button or autofill on the first
+screen — do not type the email and press Continue. `challenge_ui = "both"` is
+what puts that button there; with `autofill` alone the demo would depend on the
+browser's autofill behaving on the day.
+
 ### The shadowed-connection bug, and why it was hard to see
 
 Passkeys silently did nothing at first. Every setting was correct and every one
