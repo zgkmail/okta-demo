@@ -349,8 +349,26 @@ remember-browser exposure, or waiting for `allowRememberBrowser` to land on
 phishing-resistance gain against the bypass risk rather than treating it as a
 config detail.
 
-**Back-channel logout.** Ending the tenant session does not clear either app's
-local session until it next redirects. Single logout here is incomplete.
+**Back-channel logout.** Logging out of one app clears its own cookie and ends
+the Auth0 tenant session, but leaves the *other* app's local session intact —
+different origin, nothing tells it. That app keeps rendering as signed in until
+its own session expires or something forces it to redirect.
+
+Worse, `requireStepUp` reads `amr` and `iat` from the token stored in that
+cookie, so a recently completed step-up keeps `/transfer` reachable for the rest
+of its TTL *after* the user has logged out and the tenant session is gone. The
+guard consults a stored token, not Auth0.
+
+The fix is OIDC Back-Channel Logout: Auth0 POSTs a signed logout token carrying
+the `sid` to each client's registered endpoint, server-to-server, and each app
+destroys the matching session. Auth0 supports it — `auth0_client` exposes
+`oidc_backchannel_logout_urls`.
+
+It is not a config flag, though. Back-channel logout requires a **server-side
+session store keyed by `sid`**, because there is no browser to clear a cookie
+on. These apps use `express-openid-connect`'s default self-contained encrypted
+cookies, so there is nothing server-side to revoke. Doing this properly means
+introducing a session store first.
 
 **Terraform state hygiene.** State holds client secrets in cleartext. A real
 setup would use a remote encrypted backend and the `client_secret_wo` write-only
