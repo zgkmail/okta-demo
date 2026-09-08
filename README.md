@@ -51,8 +51,32 @@ tenant, which needs a domain you control DNS for. That is the one prerequisite
 that cannot be worked around: Auth0 will not bind a Relying Party ID to a
 `*.auth0.com` domain.
 
-`auth0/terraform/README.md` covers the bootstrap M2M application, the required
-Management API scopes, and the two settings Terraform cannot manage.
+### What Terraform cannot do
+
+Four steps need doing by hand. Listed here rather than left to be discovered
+halfway through an apply:
+
+1. **A custom domain on the tenant.** Passkeys bind to a Relying Party ID and
+   Auth0 will not use a `*.auth0.com` domain for it. Register a domain, add the
+   CNAME Auth0 gives you, wait for verification. This is the long pole — DNS can
+   take minutes to hours.
+2. **The bootstrap M2M application.** Terraform needs Management API credentials
+   and cannot create its own. Scopes are in `auth0/terraform/README.md`; the one
+   people miss is `read:client_keys`, without which client secrets come back
+   empty and the generated `.env` files fail only at login.
+3. **Two `terraform import`s.** `auth0_connection_clients` is authoritative and
+   refuses to adopt a connection that already has clients. Auth0 auto-enables
+   `google-oauth2` *and* `Username-Password-Authentication` on every client it
+   creates, so both need importing once before they can be emptied. The
+   connection ids are printed in the error message.
+4. **The `/etc/hosts` entry** above.
+
+One further setting is *checked* rather than set: the **Relying Party ID**
+(Tenant Settings → Relying Party IDs) should already show the custom domain.
+There is no provider resource for it, and changing it later invalidates every
+enrolled passkey.
+
+`auth0/terraform/README.md` has the full scope list and the import commands.
 
 ### The demo path
 
