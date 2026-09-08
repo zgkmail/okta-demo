@@ -65,6 +65,34 @@ enrolled for that identifier, otherwise a password. The choice is Auth0's to
 make, which is the point — the requirement is satisfied by the tenant, not by
 branching logic in two separate apps.
 
+**Verified at M2.** A new signup on `okta-demo-db` enrolled a passkey directly
+(`SYNCED`, so held in a cloud keychain rather than bound to the machine — the
+Mac mini's lack of Touch ID turned out to be irrelevant).
+
+### The shadowed-connection bug, and why it was hard to see
+
+Passkeys silently did nothing at first. Every setting was correct and every one
+of them checked out in the dashboard: Passkey ACTIVE, prerequisites READY, RP ID
+mapped to `auth.littlecap.biz`, Identifier First live, progressive enrollment
+on. Nothing errored, and Terraform reported success.
+
+The cause was that Auth0 auto-enables `Username-Password-Authentication` on
+every client created through the Management API — so both apps had **two**
+database connections enabled. Identifier First cannot disambiguate two database
+connections from an email alone, so logins resolved to the stock one, and the
+entire passkey configuration on `okta-demo-db` was unreachable.
+
+The only signal was the `Connection` column in the tenant logs reading
+`Username-Password-Authentication` where it should have read `okta-demo-db`.
+
+This is the third inherited default to silently widen the configuration, after
+`google-oauth2` being auto-enabled and remember-browser being offered on MFA
+challenges. The pattern is worth naming: **declaring configuration is not the
+same as owning it.** Auth0 fills the negative space with defaults, and those
+defaults win. Anything that must *not* be enabled has to be stated explicitly —
+which is why `connection.tf` takes authoritative ownership of both stock
+connections with empty client lists.
+
 ## 3. Requirement 1b — SSO between the two apps
 
 Both apps use Authorization Code + PKCE with full-page redirects and
