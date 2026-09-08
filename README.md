@@ -24,7 +24,8 @@ Everything above was verified against the live tenant, not just applied.
 ```sh
 npm install
 
-# One-time: these hostnames must resolve locally. See "Why not localhost".
+# One-time: these hostnames must resolve locally. They are deliberately not
+# localhost -- see Key decisions.
 echo "127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz" | sudo tee -a /etc/hosts
 
 # Tenant config, and the app .env files rendered from its outputs
@@ -38,6 +39,17 @@ cd ../.. && npm run dev
 
 - Baseline App — http://baseline.littlecap.biz:3000
 - Sensitive App — http://sensitive.littlecap.biz:3001
+
+Those hostnames are deliberately not `localhost` — see
+[why](#why-not-localhost). They resolve to `127.0.0.1` through `/etc/hosts`; the
+apps are not exposed publicly.
+
+**Running this against a different tenant** means substituting your own domain
+throughout. `littlecap.biz` is hard-coded in the Terraform variable defaults and
+in the `/etc/hosts` line above, and passkeys need a **custom domain** on the
+tenant, which needs a domain you control DNS for. That is the one prerequisite
+that cannot be worked around: Auth0 will not bind a Relying Party ID to a
+`*.auth0.com` domain.
 
 `auth0/terraform/README.md` covers the bootstrap M2M application, the required
 Management API scopes, and the two settings Terraform cannot manage.
@@ -217,6 +229,7 @@ built on it would silently compare against `undefined`. `iat` is the issue time
 of the token minted by the step-up transaction, which is the moment the
 challenge was satisfied.
 
+<a id="why-not-localhost"></a>
 **The apps run on real hostnames, not `localhost`.** Auth0 classifies `localhost`
 and custom URI schemes as *non-verifiable* callbacks and shows a confirmation
 screen even for first-party applications — `is_first_party` does not suppress
