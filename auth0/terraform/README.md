@@ -40,6 +40,36 @@ silently assumed:
   connection's Custom Database tab. Needed for the no-import passkey path at M4.
   `strategy_version` is *not* this setting.
 
+## Expected: a permanent diff on `okta-demo-db`
+
+`terraform plan` will always propose re-adding `authentication_methods` and
+`passkey_options` to the `okta-demo-db` connection:
+
+```
++ authentication_methods {
+    + passkey  { enabled = true }
+    + password { enabled = true }
+  }
++ passkey_options {
+    + challenge_ui = "both"
+    ...
+  }
+```
+
+**This is a provider read bug, not unapplied configuration.** Auth0 has the
+settings; the provider fails to read them back and re-proposes them every time.
+Applying is harmless — it writes identical values — but it never converges.
+
+The evidence is conclusive rather than inferred: passkeys work end to end. A
+passkey was enrolled at signup and used to authenticate in both Chrome and
+Safari, and the dashboard shows Passkey ACTIVE, "Passkey Button & Autofill"
+selected, and both enrollment options ticked — exactly what the plan claims is
+missing.
+
+Not suppressed with `lifecycle { ignore_changes }` deliberately: that would
+tidy the plan at the cost of hiding genuine drift in the settings that carry the
+core requirement. A noisy plan is the better failure.
+
 ## Verifying a change actually applied
 
 `terraform apply` succeeding does not mean Auth0 stored what you asked for, and

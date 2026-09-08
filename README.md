@@ -461,10 +461,16 @@ was the `Connection` column in the tenant logs reading
 **Terraform's report is about Terraform, not about the tenant.** Early on, an
 apply reported success while Auth0 had stored none of a custom-DB
 configuration. Later, a plan reported a permanent diff for settings Auth0 had
-stored correctly — the provider misreads `enabled_database_customization` and
-emits a phantom diff forever. I drew the wrong conclusion from each in turn.
-Neither apply-success nor plan-convergence is evidence; the dashboard or the
-Management API is.
+stored correctly. I drew the wrong conclusion from each in turn. Neither
+apply-success nor plan-convergence is evidence; the dashboard or the Management
+API is.
+
+The live example ships with this repo: `terraform plan` permanently proposes
+re-adding `authentication_methods` and `passkey_options` to `okta-demo-db`. The
+provider cannot read them back. That the configuration is genuinely applied is
+not an inference — a passkey was enrolled and used to authenticate in two
+browsers. Left unsuppressed on purpose; `ignore_changes` would quiet the plan by
+blinding it to drift in exactly the settings carrying the core requirement.
 
 **A guard that redirects on a claim the IdP controls needs a termination
 condition.** When remember-browser suppressed the challenge, `requireStepUp`
