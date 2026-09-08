@@ -118,6 +118,20 @@ second factor was satisfied. All of that lives in the tenant.
 
 ## How each requirement is met
 
+All three behaviours come from the **same `/authorize` endpoint and the same
+client**. The only thing that differs is what the application asks for:
+
+| Flow | Parameters sent | Result |
+| --- | --- | --- |
+| SSO navigation | *(none)* | Session resumed, no prompt |
+| Step-up | `acr_values=…/pape/policies/2007/06/multi-factor` | Session resumed; **second** factor challenged, first factor not |
+| Signup | `screen_hint=signup` + `prompt=login` | Session deliberately ignored; new account created |
+
+Neither application implements SSO, and neither implements MFA. They differ only
+in what they request, and the tenant decides the rest. That is also why
+`prompt=login` on the first row would silently disable single sign-on, and why
+`screen_hint` on the third is inert without `prompt=login` beside it.
+
 ### Passkey or password
 
 Configuration, not code. New Universal Login (Classic has no WebAuthn), the
