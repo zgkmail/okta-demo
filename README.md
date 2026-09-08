@@ -72,12 +72,20 @@ await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
 | | Status |
 | --- | --- |
 | Chrome 151, macOS | **Tested.** Passkey enrolled and used, plus SSO and step-up |
-| Safari, Edge, other Chromium | Untested. WebAuthn and passkeys are supported by all of them, so both paths are expected to work |
+| Safari, macOS | **Tested.** Passkey login works with the credential enrolled in Chrome |
+| Edge, other Chromium | Untested. Same engine and WebAuthn support as Chrome, so both paths are expected to work |
 | Firefox | Untested. WebAuthn works; passkey and conditional-UI support has historically lagged, so the passkey path is the least certain |
 | Anything without WebAuthn | Password path only |
 
-Only Chrome was actually exercised — the rest is inference from platform
+Chrome and Safari were actually exercised; the rest is inference from platform
 support, not verification.
+
+Worth noting what the Safari result demonstrates: the passkey was **enrolled in
+Chrome and used in Safari**. It is stored in iCloud Keychain rather than bound
+to a browser profile or to the machine — which is also why the absence of Touch
+ID on this hardware never mattered. That portability is the practical argument
+for passkeys over device-bound credentials, and it is worth showing rather than
+asserting.
 
 Two things reduce the exposure. `challenge_ui = "both"` renders an explicit
 "Continue with a passkey" button alongside autofill, so a browser with weak
