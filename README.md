@@ -53,6 +53,42 @@ Management API scopes, and the two settings Terraform cannot manage.
 5. On the transfer page, `amr` now contains `mfa`, which it did not on the home
    page moments earlier.
 
+### Browser support
+
+The applications themselves impose almost nothing: the pages are server-rendered
+HTML with **no client-side JavaScript**, and the only notable CSS is
+`color-scheme` and `<details>`. They need cookies and the ability to follow
+redirects. The password path therefore works in any current browser.
+
+The real requirement is on **Auth0's login page**, not on these apps, because
+that is where the WebAuthn ceremony runs. The passkey path needs WebAuthn with
+either a platform authenticator or the cross-device (hybrid/QR) flow. You can
+check the former from any page's console:
+
+```js
+await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+```
+
+| | Status |
+| --- | --- |
+| Chrome 151, macOS | **Tested.** Passkey enrolled and used, plus SSO and step-up |
+| Safari, Edge, other Chromium | Untested. WebAuthn and passkeys are supported by all of them, so both paths are expected to work |
+| Firefox | Untested. WebAuthn works; passkey and conditional-UI support has historically lagged, so the passkey path is the least certain |
+| Anything without WebAuthn | Password path only |
+
+Only Chrome was actually exercised — the rest is inference from platform
+support, not verification.
+
+Two things reduce the exposure. `challenge_ui = "both"` renders an explicit
+"Continue with a passkey" button alongside autofill, so a browser with weak
+conditional-mediation support still has a working entry point. And passwords
+remain enabled on the connection, so any browser retains a usable first factor.
+
+Third-party cookie policy is not a factor here: SSO is redirect-based, so the
+Auth0 session cookie is first-party at the moment it is read. It is
+iframe-based silent authentication that cookie blocking breaks, and this
+architecture does not use it.
+
 ## What was built
 
 ```
