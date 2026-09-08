@@ -238,10 +238,33 @@ bypassing step-up for a month.
 
 ### Step-up is bound to time, not to the transaction
 
-Within the TTL, any sensitive route is reachable. A production design would bind
-the challenge to the specific operation — a nonce carried through `/authorize`
-and echoed back, or Rich Authorization Requests describing the actual transfer.
-This is the largest gap between what is here and what I would ship.
+Within the TTL, one challenge authorizes *any* sensitive action. Step up for a
+$10 transfer and a $10,000 transfer needs no new challenge for the next five
+minutes. With several sensitive routes, one challenge would cover all of them.
+
+**Why it is built this way.** The requirement is to gate *access to an
+operation*, and a time-bounded step-up satisfies that. Transaction binding is a
+strictly stronger property that was not asked for — and it is not a setting to
+switch on.
+
+Auth0's step-up primitives are session-scoped: `acr_values` → Action → `amr`
+tells you MFA occurred *in this authentication transaction*, never that it
+occurred *for this specific transfer*. The platform feature that does bind them
+is Rich Authorization Requests under Auth0's **Highly Regulated Identity**
+feature set, which is a distinct offering aimed at regulated finance rather than
+something enabled on a development tenant.
+
+Rolling it by hand means a server-side store of pending transactions, carrying
+the transaction id through `/authorize`, an Action echoing it into a custom
+claim, then verifying the returned token matches *that* transaction, marking it
+single-use, and handling expiry and replay. That is a meaningful build for a
+property the exercise did not ask for, so I bounded the exposure instead: a
+short TTL, configurable, with the guard applied to both `GET` and `POST` so it
+cannot be skipped by posting directly.
+
+The honest framing is that **time is the wrong axis**, not that five minutes is
+the wrong number. This is the largest gap between what is here and what I would
+ship.
 
 ### Passkey first factor, TOTP second factor — an assurance downgrade
 
