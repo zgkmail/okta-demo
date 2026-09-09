@@ -14,7 +14,7 @@ test record; this file is the summary.
 | Passkey **or** password as first factor | Done — passkey enrolled at signup, both methods active |
 | SSO between the two apps | Done — verified by identical `sid`, no re-prompt |
 | Step-up on a sensitive operation, non-email factor | Done — TOTP on `/transfer`, no first-factor re-prompt |
-| Bonus A — native app | Not attempted |
+| Bonus A — native app | Done — Expo/iOS, step-up verified on the simulator |
 | Bonus B — external user store | Designed and spiked, not built. See [Bonus items](#bonus-items) |
 
 Everything above was verified against the live tenant, not merely applied.
@@ -25,6 +25,7 @@ Everything above was verified against the live tenant, not merely applied.
 apps/baseline/     Express, :3000 — ordinary app, exists to prove SSO
 apps/sensitive/    Express, :3001 — same auth, plus step-up on /transfer
 apps/common/       shared auth config, claim viewer, coordinated logout
+apps/mobile/       Expo + react-native-auth0, iOS — Bonus A
 auth0/terraform/   clients, connection, Action, MFA, tenant flags
 auth0/actions/     the step-up Action, as a real .js file
 ```
@@ -465,12 +466,41 @@ SSO path would force the re-prompt the requirement forbids.
 
 ## Bonus items
 
-**A — native app: not attempted.** I would use Expo with `react-native-auth0`,
-Authorization Code with PKCE through `ASWebAuthenticationSession` rather than an
-embedded webview, and reuse the same Action unchanged — the step-up policy lives
-in the tenant, so a mobile client need only send the same `acr_values`. Since
-that session shares the Safari cookie jar, SSO with the web apps would work on
-iOS as a side effect.
+**A — native app: built and verified.** Expo with `react-native-auth0`, running
+on the iOS simulator. Authorization Code with PKCE through
+`ASWebAuthenticationSession` rather than an embedded webview — the SDK's default,
+and the correct choice: an embedded webview would break passkeys and is an OAuth
+anti-pattern.
+
+The point of the exercise is what it *didn't* need. Tenant-side it added exactly
+one thing — a native client. The Action, the Guardian factors and the connection
+are all shared with the web apps unchanged. The mobile step-up is the same
+`acr_values` on the same `/authorize`, passed through `additionalParameters`.
+Nothing about the policy is client-specific, which is the argument for putting it
+in the tenant rather than in each application.
+
+It is a **public client**: a native app cannot keep a secret, so token endpoint
+authentication is `none` and PKCE carries the security.
+
+Two honest limits:
+
+**The guard is client-side, and that is not a security boundary.** A native
+binary can be modified; nothing stops someone skipping the check. In the web apps
+the equivalent guard is server-side and real. The correct mobile architecture is
+that the app calls an API and *the API* verifies `amr`/`acr` on the access token
+before performing the transfer. There is no API here, so the check is
+illustrative rather than enforcing — worth saying plainly rather than letting the
+demo imply otherwise.
+
+**Passkeys do not work on the iOS simulator**, which has no Secure Enclave and so
+no platform authenticator. The simulator uses the password path. This is a
+simulator limitation rather than a configuration problem, and Bonus A does not
+ask for passkeys — passkey-as-first-factor is demonstrated in the web apps. A
+physical device would exercise it.
+
+Not tested: SSO between the native app and the web apps. `ASWebAuthenticationSession`
+shares the Safari cookie jar, so it should work in principle, but the web apps
+resolve through the Mac's `/etc/hosts`, which the simulator does not share.
 
 **B — external user store: designed and spiked, not built.** The approach is a
 Custom Database Connection over Postgres with **user import disabled**, so
@@ -572,6 +602,24 @@ resource exists for it, and changing it later invalidates every enrolled passkey
 
 Note `terraform plan` never reaches "No changes" — see
 [What this surfaced about the product](#what-this-surfaced-about-the-product).
+
+### The native app (Bonus A)
+
+```sh
+cd auth0/terraform
+terraform output -raw mobile_config > ../../apps/mobile/auth0-config.json
+
+cd ../../apps/mobile
+npm install
+npx expo run:ios --device "iPhone 17 Pro"
+```
+
+Needs Xcode with an **iOS simulator runtime actually installed** — Xcode 26 ships
+the SDK separately from the runtime, and without one no iOS destination is
+buildable at all, simulator or device. `xcodebuild -downloadPlatform iOS` fixes
+it (~8.5 GB). The symptom is `xcodebuild` reporting zero eligible destinations
+while `simctl` happily lists booted devices, which is misleading enough to be
+worth naming.
 
 ### Browser support
 
