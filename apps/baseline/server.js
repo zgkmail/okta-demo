@@ -29,6 +29,10 @@ const PORT = process.env.PORT || 3000;
 const PEER_URL = requiredEnv('PEER_URL');
 const BASE_URL = requiredEnv('BASE_URL');
 
+// Bonus B. Absent until the external store is provisioned, in which case the
+// button and route simply do not appear -- the core demo is unaffected.
+const EXTERNAL_CONNECTION = process.env.AUTH0_EXTERNAL_CONNECTION;
+
 app.use(authConfig());
 mountCoordinatedLogout(app, { baseUrl: BASE_URL, peerUrl: PEER_URL });
 
@@ -43,7 +47,14 @@ app.get('/', (req, res) => {
       ]
     // No Sign up button: Auth0's own login screen already offers one, and
     // duplicating it here just gives two paths to the same place.
-    : [{ href: '/login', label: 'Log in', primary: true }];
+    : [
+        { href: '/login', label: 'Log in', primary: true },
+        // Bonus B. Same app, same tenant, same Action -- only the directory
+        // differs, and these users never enter Auth0's store.
+        ...(EXTERNAL_CONNECTION
+          ? [{ href: '/login/external', label: 'Log in with external store' }]
+          : []),
+      ];
 
   const banner = authed
     ? {
@@ -82,6 +93,18 @@ app.get('/signup', (req, res) =>
     authorizationParams: { screen_hint: 'signup', prompt: 'login' },
   })
 );
+
+// Bonus B: the same /authorize, pinned to the external directory instead.
+// Nothing else changes -- the session, SSO and the step-up Action are all
+// indifferent to where the user's credentials happen to live.
+if (EXTERNAL_CONNECTION) {
+  app.get('/login/external', (req, res) =>
+    res.oidc.login({
+      returnTo: '/',
+      authorizationParams: { connection: EXTERNAL_CONNECTION },
+    })
+  );
+}
 
 // Handy during the walkthrough for diffing claims between the two apps.
 app.get('/claims.json', (req, res) => {

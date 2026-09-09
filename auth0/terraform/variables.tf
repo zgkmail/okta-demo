@@ -41,6 +41,20 @@ variable "sensitive_base_url" {
   default     = "http://sensitive.littlecap.biz:3001"
 }
 
+variable "external_db_url" {
+  description = <<-EOT
+    Postgres connection string for the external user store (Bonus B). Auth0 runs
+    the custom database scripts on its own servers, so this must be reachable
+    from the internet -- a local Postgres will not work without a tunnel.
+
+    Supply it from the environment and never commit it:
+      export TF_VAR_external_db_url='postgresql://...neon.tech/...?sslmode=require'
+  EOT
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "mobile_login_hint" {
   description = <<-EOT
     Optional email to prefill the native app's identifier screen, purely to save

@@ -62,6 +62,13 @@ function authConfig() {
       // has to be requested explicitly.
       response_type: 'code',
       scope: 'openid profile email',
+
+      // Pin the connection. Once more than one database connection is enabled
+      // -- which Bonus B does -- Identifier First cannot tell them apart from an
+      // email alone, and an unpinned login resolves to whichever Auth0 happens
+      // to choose. That exact ambiguity made the passkey configuration silently
+      // unreachable earlier in this project, so nothing here is left to chance.
+      ...(process.env.AUTH0_CONNECTION ? { connection: process.env.AUTH0_CONNECTION } : {}),
     },
     routes: {
       // Move the SDK's federated logout aside. /logout is ours and orchestrates
