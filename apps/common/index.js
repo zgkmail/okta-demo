@@ -63,11 +63,20 @@ function authConfig() {
       response_type: 'code',
       scope: 'openid profile email',
 
-      // Pin the connection. Once more than one database connection is enabled
-      // -- which Bonus B does -- Identifier First cannot tell them apart from an
-      // email alone, and an unpinned login resolves to whichever Auth0 happens
-      // to choose. That exact ambiguity made the passkey configuration silently
-      // unreachable earlier in this project, so nothing here is left to chance.
+      // Pin the connection -- but only where the app is *choosing* a directory,
+      // never where it is merely resuming a session.
+      //
+      // Choosing: with two database connections enabled, Identifier First cannot
+      // tell them apart from an email alone and resolves to whichever Auth0
+      // picks. That ambiguity made the passkey configuration silently
+      // unreachable earlier, so the Baseline App names its connection.
+      //
+      // Resuming: a pinned connection SUPPRESSES session resume when the
+      // existing session came from a different connection -- Auth0 forces
+      // re-authentication against the one that was asked for. The Sensitive App
+      // therefore sets no connection at all: it never offers a choice, it only
+      // resumes, and pinning would break both SSO and step-up for users whose
+      // credentials live in the external store.
       ...(process.env.AUTH0_CONNECTION ? { connection: process.env.AUTH0_CONNECTION } : {}),
     },
     routes: {

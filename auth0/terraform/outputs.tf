@@ -44,7 +44,6 @@ output "sensitive_env" {
   sensitive   = true
   value       = <<-EOT
     AUTH0_ISSUER_BASE_URL=${var.auth0_issuer_base_url}
-    AUTH0_CONNECTION=${auth0_connection.main_db.name}
     AUTH0_CLIENT_ID=${auth0_client.app["sensitive"].client_id}
     AUTH0_CLIENT_SECRET=${auth0_client_credentials.app["sensitive"].client_secret}
     BASE_URL=${var.sensitive_base_url}
