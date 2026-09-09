@@ -50,48 +50,29 @@ client**. Only the requested parameters differ:
 | Step-up | `acr_values=…/multi-factor` | Session resumed; **second** factor challenged, first not |
 | Signup | `screen_hint=signup` + `prompt=login` | Session deliberately ignored; new account |
 
-Neither application implements SSO, and neither implements MFA.
+**Neither application implements SSO, and neither implements MFA.**
 
-**Passkey or password.** Configuration only: New Universal Login (Classic has no
-WebAuthn), the Identifier First flow, and one database connection with both
-`passkey` and `password` enabled. The user supplies an identifier and Auth0
-decides what proof to demand. Passkeys additionally require the custom domain,
-because they bind to a Relying Party ID.
+**Passkey or password** is configuration, not code: New Universal Login, the
+Identifier First flow, and one connection with both methods enabled. The user
+supplies an identifier and Auth0 decides what proof to demand. Passkeys also
+require the custom domain, because they bind to a Relying Party ID.
 
-**SSO.** Both apps are clients of one tenant using Authorization Code with
-full-page redirects. The first login sets Auth0's session cookie on the custom
-domain; the second app's `/authorize` finds it and returns a code without
-prompting. Two things make or break it:
+**SSO** follows from both apps being clients of one tenant using Authorization
+Code with full-page redirects. Two things break it: sending `prompt=login`, which
+tells Auth0 to disregard the session — `max_age` is the same mistake in different
+clothing — and the receiving app never initiating `/authorize`, since a resumed
+session does nothing on its own. Both were learned by doing them.
 
-- **Never send `prompt=login`** on this path. It tells Auth0 to disregard the
-  existing session, so SSO appears broken while the cause is one request
-  parameter. `max_age` is the same mistake in different clothing. `/signup` is
-  the deliberate exception, because there the intent *is* to avoid reusing the
-  session.
-- **The receiving app must actually initiate `/authorize`.** A resumed session
-  does nothing alone. The Sensitive App's home route uses `requiresAuth()`;
-  without it the page rendered "Not signed in" while a valid session sat unused —
-  indistinguishable from broken SSO.
+**Step-up** guards `/transfer`. `requireStepUp` checks the ID token for `amr`
+containing `mfa` within a TTL, and on a miss redirects to `/authorize` carrying
+`acr_values` and deliberately no `prompt`. Auth0 resumes the session — no
+password, no passkey — and a post-login Action demands MFA.
 
-**Step-up.** The sensitive operation is initiating a funds transfer at
-`/transfer`.
-
-1. `requireStepUp` checks the ID token for `amr` containing `mfa`, fresh within a
-   TTL (default 5 minutes).
-2. On a miss it redirects to `/authorize` with `acr_values`, and deliberately no
-   `prompt`.
-3. Auth0 resumes the session — no password or passkey — and a post-login Action
-   sees the `acr_values` and demands MFA.
-4. The new ID token carries `amr` including `mfa`.
-
-The mechanism rests on one fact: **post-login Actions run on every authorization
-transaction, including ones Auth0 resumes from an existing session.** That is
-what allows a second factor to be demanded without re-authenticating the first.
-Ordinary logins carry no `acr_values` and fall through, so the Baseline App stays
-single-factor. The tenant's MFA policy is `never` for the same reason — MFA is
-not a blanket rule, the Action decides per transaction. (Auth0 calls its MFA
-subsystem *Guardian*; that is where available factors and the policy are
-declared.)
+That works because **post-login Actions run on every authorization transaction,
+including ones Auth0 resumes from an existing session.** Ordinary logins carry no
+`acr_values` and fall straight through, so the Baseline App stays single-factor;
+the tenant MFA policy is `never` for the same reason, leaving the Action to
+decide per transaction. (Auth0 calls its MFA subsystem *Guardian*.)
 
 ## Key decisions
 
@@ -729,14 +710,13 @@ remember-browser behaviour, the redirect loop, and the missing loop guard.
 
 ## Running it
 
-Setup and reference, kept at the end deliberately — the decisions above are the
-substance, and the walkthrough demonstrates the flows live.
+Reference, kept last deliberately — the decisions above are the substance.
+`DEMO.md` has the walkthrough run sheet.
 
 ```sh
 npm install
 
-# One-time: these hostnames must resolve locally. They are deliberately not
-# localhost -- see Key decisions.
+# One-time. Deliberately not localhost -- see Key decisions.
 echo "127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz" | sudo tee -a /etc/hosts
 
 cd auth0/terraform
@@ -750,82 +730,68 @@ cd ../.. && npm run dev
 - Baseline App — http://baseline.littlecap.biz:3000
 - Sensitive App — http://sensitive.littlecap.biz:3001
 
-Those hostnames resolve to `127.0.0.1` via `/etc/hosts`; nothing is exposed
-publicly. They are deliberately not `localhost` — [why](#why-not-localhost). Running this against a different tenant means substituting your own
-domain — `littlecap.biz` is baked into the Terraform defaults, and passkeys
-require a **custom domain**, which requires a domain you control DNS for. That
-last prerequisite has no workaround: Auth0 will not bind a Relying Party ID to a
-`*.auth0.com` domain.
+Running this against a different tenant means substituting your own domain.
+`littlecap.biz` is baked into the Terraform defaults, and passkeys need a
+**custom domain** you control DNS for — the one prerequisite with no workaround,
+since Auth0 will not bind a Relying Party ID to a `*.auth0.com` domain.
 
 ### What Terraform cannot do
 
-1. **A custom domain on the tenant.** Register a domain, add the CNAME Auth0
-   gives you, wait for verification. The long pole — DNS can take hours.
-2. **The bootstrap M2M application.** Terraform needs Management API credentials
-   and cannot create its own. Scopes are in `auth0/terraform/README.md`; the one
-   people miss is `read:client_keys`, without which client secrets come back
-   empty and the generated `.env` files fail only at login.
+1. **A custom domain on the tenant.** Register it, add the CNAME Auth0 gives you,
+   wait for verification. The long pole — DNS can take hours.
+2. **The bootstrap M2M application**, since Terraform cannot create its own
+   credentials. Scopes are in `auth0/terraform/README.md`; the one people miss is
+   `read:client_keys`, without which secrets come back empty and the generated
+   `.env` files fail only at login.
 3. **Two `terraform import`s.** `auth0_connection_clients` is authoritative and
-   refuses to adopt a connection that already has clients. Auth0 auto-enables
+   will not adopt a connection that already has clients — and Auth0 auto-enables
    `google-oauth2` *and* `Username-Password-Authentication` on every client it
-   creates, so both must be imported before they can be emptied. Connection ids
-   are printed in the error.
-4. **The `/etc/hosts` entry** above.
+   creates. Connection ids are printed in the error.
+4. **The `/etc/hosts` entry.**
 
-One setting is *checked* rather than set: the **Relying Party ID** (Tenant
-Settings → Relying Party IDs) should already show the custom domain. No provider
-resource exists for it, and changing it later invalidates every enrolled passkey.
+One setting is *checked* rather than set: the **Relying Party ID** should already
+show the custom domain. No provider resource exists for it, and changing it later
+invalidates every enrolled passkey.
 
-Note `terraform plan` never reaches "No changes" — see
-[What this surfaced about the product](#what-this-surfaced-about-the-product).
+`terraform plan` never reaches "No changes" — see
+[What this surfaced](#what-this-surfaced-about-the-product).
 
 ### The native app (Bonus A)
 
 ```sh
-cd auth0/terraform
 terraform output -raw mobile_config > ../../apps/mobile/auth0-config.json
-
-cd ../../apps/mobile
-npm install
+cd ../../apps/mobile && npm install
 npx expo run:ios --device "iPhone 17 Pro"
 ```
 
-Needs Xcode with an **iOS simulator runtime actually installed** — Xcode 26 ships
-the SDK separately from the runtime, and without one no iOS destination is
-buildable at all, simulator or device. `xcodebuild -downloadPlatform iOS` fixes
-it (~8.5 GB). The symptom is `xcodebuild` reporting zero eligible destinations
-while `simctl` happily lists booted devices, which is misleading enough to be
-worth naming.
+Needs an **iOS simulator runtime actually installed** — Xcode 26 ships the SDK
+separately, and without a runtime no iOS destination is buildable at all, device
+or simulator. `xcodebuild -downloadPlatform iOS` fixes it (~8.5 GB). The symptom
+is zero eligible destinations while `simctl` cheerfully lists booted devices.
+
+### The external store (Bonus B)
+
+`external-store/README.md`. Briefly: run `schema.sql` in Neon, then
+`export TF_VAR_external_db_url='postgresql://...'` before applying. Auth0 runs
+the custom database scripts on its own servers, so the database must be reachable
+from the internet.
 
 ### Browser support
 
-The apps are server-rendered HTML with **no client-side JavaScript**; they need
-cookies and redirects, nothing more. The password path works anywhere. The
-WebAuthn requirement lives on Auth0's login page, not here.
+Server-rendered HTML with **no client-side JavaScript** — cookies and redirects,
+nothing more. The WebAuthn requirement lives on Auth0's login page, not here.
 
 | | Status |
 | --- | --- |
-| Chrome 151, macOS | **Tested** — passkey enrolled and used, plus SSO and step-up |
+| Chrome 151, macOS | **Tested** — passkey, SSO, step-up |
 | Safari, macOS | **Tested** — passkey login using the credential enrolled in Chrome |
-| Edge, other Chromium | Untested; same engine and WebAuthn support as Chrome |
-| Firefox | Untested; WebAuthn works but passkey and conditional-UI support has lagged |
+| Edge, other Chromium | Untested; same engine as Chrome |
+| Firefox | Untested; WebAuthn works, passkey and conditional-UI support has lagged |
 
-The Safari result is worth more than a row: the passkey was **enrolled in Chrome
-and used in Safari**. It lives in iCloud Keychain rather than a browser profile
-or the machine — which is also why this hardware having no Touch ID never
-mattered.
+The Safari row is worth more than it looks: the passkey was **enrolled in Chrome
+and used in Safari**, so it lives in iCloud Keychain rather than a browser
+profile — which is also why this hardware having no Touch ID never mattered.
 
-Cookie policy is not a factor: SSO is redirect-based, so the Auth0 session cookie
-is first-party when read. Third-party cookie blocking breaks *iframe-based*
+Third-party cookie policy is not a factor here: SSO is redirect-based, so the
+Auth0 cookie is first-party when read. Cookie blocking breaks *iframe-based*
 silent authentication, which this architecture does not use.
-
-### The demo path
-
-1. **Sign up** at the Baseline App — Auth0 offers passkey creation directly.
-2. **Log out, log back in** — click "Continue with a passkey" on the identifier
-   screen. Both factors are offered there; submitting an email selects the
-   password branch and there is no route back.
-3. **Open Sensitive App** — signed in, no prompt, identical `sid`. Both pages
-   render it.
-4. **Initiate transfer** — a TOTP challenge with *no* password or passkey
-   re-prompt. On arrival `amr` contains `mfa`, which it did not moments earlier.
