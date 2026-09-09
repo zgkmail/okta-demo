@@ -365,10 +365,21 @@ visit therefore resolves to whichever connection Auth0 picks — `okta-demo-db` 
 and an external user is told **"wrong email or password"**, which misdescribes
 the problem entirely. Verified.
 
-This is not fixable by configuration here. Auth0's Home Realm Discovery supports
-exactly one database connection, and both directories use `@littlecap.biz`
-addresses, so even domain-based routing could not tell them apart. A production
-answer is an explicit directory choice, or organization-based routing.
+This is not fixable by configuration, and not for the reason it first appears.
+Giving the external users a distinct email domain would not help: `domain_aliases`
+— Auth0's Home Realm Discovery mechanism — applies to **enterprise and social
+connections only**, not to the `auth0` database strategy. Auth0 routes by domain
+to identity providers, with exactly **one** database connection as the catch-all
+fallback. Two database connections cannot be told apart by email at all.
+
+Which is a second argument for the Enterprise-connection form of Bonus B
+described below. An OIDC provider over the same Postgres would carry
+`domain_aliases`, so Auth0 would route by email domain, the explicit "external
+store" button would be unnecessary, and this gap would close — working *with*
+Auth0's routing model rather than around it.
+
+Failing that, the production answer is an explicit directory choice or
+organization-based routing.
 
 **`terraform plan` never converges.** A provider read bug, not unapplied
 configuration — see [What this surfaced](#what-this-surfaced-about-the-product).
