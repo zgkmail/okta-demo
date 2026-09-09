@@ -498,9 +498,35 @@ simulator limitation rather than a configuration problem, and Bonus A does not
 ask for passkeys — passkey-as-first-factor is demonstrated in the web apps. A
 physical device would exercise it.
 
-Not tested: SSO between the native app and the web apps. `ASWebAuthenticationSession`
-shares the Safari cookie jar, so it should work in principle, but the web apps
-resolve through the Mac's `/etc/hosts`, which the simulator does not share.
+**Web-to-native SSO: understood, not implemented.** The brief says the native app
+need not share SSO with the web apps, so this was out of scope — but it is worth
+being precise about what would and would not work, because the obvious framing
+is wrong.
+
+*Not possible:* SSO from a browser on the Mac to the app in the simulator. They
+are separate environments with separate cookie jars, so there is no session to
+carry. A "open the mobile app" button would not help either — a custom-scheme
+link only opens an app whose scheme is registered on that same device, and the
+app is installed in the simulator, not on macOS.
+
+*Would work:* the same thing entirely within one device. `ASWebAuthenticationSession`
+shares Safari's website data unless an ephemeral session is requested, so logging
+into the Baseline App in the simulator's Safari and then opening the native app
+would let its `/authorize` find the tenant session and return without a prompt.
+A deep link from the page would work there too, since the scheme is registered in
+that simulator.
+
+*The blocker is reachability, not identity.* The web apps resolve through the
+Mac's `/etc/hosts`, which the simulator does not consult. The fix is public DNS
+`A` records for `baseline`/`sensitive.littlecap.biz` pointing at `127.0.0.1`: the
+simulator shares the host's network stack, so loopback there is the Mac's
+loopback and reaches the running apps. That keeps callbacks verifiable, unlike
+the alternative of switching to `localhost`, which would reintroduce the consent
+screen described in Key decisions.
+
+Not done because it is a bonus on an optional bonus, and it costs a public DNS
+change on a registrar that previously took hours to publish — poor value against
+a fixed walkthrough date.
 
 **B — external user store: designed and spiked, not built.** The approach is a
 Custom Database Connection over Postgres with **user import disabled**, so
