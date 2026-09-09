@@ -19,88 +19,6 @@ test record; this file is the summary.
 
 Everything above was verified against the live tenant, not merely applied.
 
-## Running it
-
-```sh
-npm install
-
-# One-time: these hostnames must resolve locally. They are deliberately not
-# localhost -- see Key decisions.
-echo "127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz" | sudo tee -a /etc/hosts
-
-cd auth0/terraform
-terraform init && terraform apply
-terraform output -raw baseline_env  > ../../apps/baseline/.env
-terraform output -raw sensitive_env > ../../apps/sensitive/.env
-
-cd ../.. && npm run dev
-```
-
-- Baseline App — http://baseline.littlecap.biz:3000
-- Sensitive App — http://sensitive.littlecap.biz:3001
-
-Those hostnames resolve to `127.0.0.1` via `/etc/hosts`; nothing is exposed
-publicly. They are deliberately not `localhost` — [why](#why-not-localhost). Running this against a different tenant means substituting your own
-domain — `littlecap.biz` is baked into the Terraform defaults, and passkeys
-require a **custom domain**, which requires a domain you control DNS for. That
-last prerequisite has no workaround: Auth0 will not bind a Relying Party ID to a
-`*.auth0.com` domain.
-
-### What Terraform cannot do
-
-1. **A custom domain on the tenant.** Register a domain, add the CNAME Auth0
-   gives you, wait for verification. The long pole — DNS can take hours.
-2. **The bootstrap M2M application.** Terraform needs Management API credentials
-   and cannot create its own. Scopes are in `auth0/terraform/README.md`; the one
-   people miss is `read:client_keys`, without which client secrets come back
-   empty and the generated `.env` files fail only at login.
-3. **Two `terraform import`s.** `auth0_connection_clients` is authoritative and
-   refuses to adopt a connection that already has clients. Auth0 auto-enables
-   `google-oauth2` *and* `Username-Password-Authentication` on every client it
-   creates, so both must be imported before they can be emptied. Connection ids
-   are printed in the error.
-4. **The `/etc/hosts` entry** above.
-
-One setting is *checked* rather than set: the **Relying Party ID** (Tenant
-Settings → Relying Party IDs) should already show the custom domain. No provider
-resource exists for it, and changing it later invalidates every enrolled passkey.
-
-Note `terraform plan` never reaches "No changes" — see
-[What this surfaced about the product](#what-this-surfaced-about-the-product).
-
-### Browser support
-
-The apps are server-rendered HTML with **no client-side JavaScript**; they need
-cookies and redirects, nothing more. The password path works anywhere. The
-WebAuthn requirement lives on Auth0's login page, not here.
-
-| | Status |
-| --- | --- |
-| Chrome 151, macOS | **Tested** — passkey enrolled and used, plus SSO and step-up |
-| Safari, macOS | **Tested** — passkey login using the credential enrolled in Chrome |
-| Edge, other Chromium | Untested; same engine and WebAuthn support as Chrome |
-| Firefox | Untested; WebAuthn works but passkey and conditional-UI support has lagged |
-
-The Safari result is worth more than a row: the passkey was **enrolled in Chrome
-and used in Safari**. It lives in iCloud Keychain rather than a browser profile
-or the machine — which is also why this hardware having no Touch ID never
-mattered.
-
-Cookie policy is not a factor: SSO is redirect-based, so the Auth0 session cookie
-is first-party when read. Third-party cookie blocking breaks *iframe-based*
-silent authentication, which this architecture does not use.
-
-### The demo path
-
-1. **Sign up** at the Baseline App — Auth0 offers passkey creation directly.
-2. **Log out, log back in** — click "Continue with a passkey" on the identifier
-   screen. Both factors are offered there; submitting an email selects the
-   password branch and there is no route back.
-3. **Open Sensitive App** — signed in, no prompt, identical `sid`. Both pages
-   render it.
-4. **Initiate transfer** — a TOTP challenge with *no* password or passkey
-   re-prompt. On arrival `amr` contains `mfa`, which it did not moments earlier.
-
 ## What was built
 
 ```
@@ -199,8 +117,8 @@ an existing account would have masked the result.
 sessions interchangeable and quietly fake the thing the SSO demo proves.
 
 **Tenant configuration is Terraform**, with the Action kept as a real `.js` file
-so it stays lintable. The settings Terraform cannot reach are documented above
-rather than silently assumed.
+so it stays lintable. The settings Terraform cannot reach are listed under
+[Running it](#running-it) rather than silently assumed.
 
 ## Trade-offs
 
@@ -493,6 +411,32 @@ an application stack trace.
 **Impact:** every signal points at your own code. **Cheapest fix:** reject the
 Action at deploy time rather than at runtime.
 
+### If I had to rank them
+
+Four days is not enough to judge a roadmap, and I have no visibility into
+frequency or support volume. But ordered by what cost me most, and by how
+recoverable each is for a developer who hits it:
+
+1. **The shadowed connection.** Silent, no error, every dashboard indicator
+   green, and it defeats the feature you have just finished configuring.
+   Diagnosis required knowing to read tenant logs. Also the cheapest of these to
+   fix — one warning when a client has two database connections under Identifier
+   First.
+2. **Documentation that is confidently wrong.** The `acr_values` override reads
+   as authoritative and does not hold for Action-driven MFA. A developer
+   following it ships a step-up their users can switch off. Worse than a
+   documentation gap, because a gap makes you go and test.
+3. **Terraform read parity.** Slower burn, wider blast radius. It undermines
+   confidence in infrastructure-as-code generally, which is the workflow teams
+   standardise on precisely because they want to stop checking by hand.
+4. **The MFA API split.** Genuinely limiting, but there is an open feature
+   request, a workaround, and no silent failure — you can see the checkbox. The
+   composition being undocumented in the obvious place is a same-day fix.
+
+The ordering principle is **invisible failures first**. A developer can route
+around a limitation they can see; they cannot route around one that presents as
+success. Three of these four presented as success.
+
 ## Traps I set for myself
 
 Separating these out, because they are mine rather than the product's.
@@ -576,3 +520,88 @@ composition finding in particular was shipped wrong before it was tested.
 And the most valuable findings came from *building and breaking* the thing rather
 than reading about it. Ticking a checkbox nobody asked about is what exposed the
 remember-browser behaviour, the redirect loop, and the missing loop guard.
+
+## Running it
+
+Setup and reference, kept at the end deliberately — the decisions above are the
+substance, and the walkthrough demonstrates the flows live.
+
+```sh
+npm install
+
+# One-time: these hostnames must resolve locally. They are deliberately not
+# localhost -- see Key decisions.
+echo "127.0.0.1  baseline.littlecap.biz sensitive.littlecap.biz" | sudo tee -a /etc/hosts
+
+cd auth0/terraform
+terraform init && terraform apply
+terraform output -raw baseline_env  > ../../apps/baseline/.env
+terraform output -raw sensitive_env > ../../apps/sensitive/.env
+
+cd ../.. && npm run dev
+```
+
+- Baseline App — http://baseline.littlecap.biz:3000
+- Sensitive App — http://sensitive.littlecap.biz:3001
+
+Those hostnames resolve to `127.0.0.1` via `/etc/hosts`; nothing is exposed
+publicly. They are deliberately not `localhost` — [why](#why-not-localhost). Running this against a different tenant means substituting your own
+domain — `littlecap.biz` is baked into the Terraform defaults, and passkeys
+require a **custom domain**, which requires a domain you control DNS for. That
+last prerequisite has no workaround: Auth0 will not bind a Relying Party ID to a
+`*.auth0.com` domain.
+
+### What Terraform cannot do
+
+1. **A custom domain on the tenant.** Register a domain, add the CNAME Auth0
+   gives you, wait for verification. The long pole — DNS can take hours.
+2. **The bootstrap M2M application.** Terraform needs Management API credentials
+   and cannot create its own. Scopes are in `auth0/terraform/README.md`; the one
+   people miss is `read:client_keys`, without which client secrets come back
+   empty and the generated `.env` files fail only at login.
+3. **Two `terraform import`s.** `auth0_connection_clients` is authoritative and
+   refuses to adopt a connection that already has clients. Auth0 auto-enables
+   `google-oauth2` *and* `Username-Password-Authentication` on every client it
+   creates, so both must be imported before they can be emptied. Connection ids
+   are printed in the error.
+4. **The `/etc/hosts` entry** above.
+
+One setting is *checked* rather than set: the **Relying Party ID** (Tenant
+Settings → Relying Party IDs) should already show the custom domain. No provider
+resource exists for it, and changing it later invalidates every enrolled passkey.
+
+Note `terraform plan` never reaches "No changes" — see
+[What this surfaced about the product](#what-this-surfaced-about-the-product).
+
+### Browser support
+
+The apps are server-rendered HTML with **no client-side JavaScript**; they need
+cookies and redirects, nothing more. The password path works anywhere. The
+WebAuthn requirement lives on Auth0's login page, not here.
+
+| | Status |
+| --- | --- |
+| Chrome 151, macOS | **Tested** — passkey enrolled and used, plus SSO and step-up |
+| Safari, macOS | **Tested** — passkey login using the credential enrolled in Chrome |
+| Edge, other Chromium | Untested; same engine and WebAuthn support as Chrome |
+| Firefox | Untested; WebAuthn works but passkey and conditional-UI support has lagged |
+
+The Safari result is worth more than a row: the passkey was **enrolled in Chrome
+and used in Safari**. It lives in iCloud Keychain rather than a browser profile
+or the machine — which is also why this hardware having no Touch ID never
+mattered.
+
+Cookie policy is not a factor: SSO is redirect-based, so the Auth0 session cookie
+is first-party when read. Third-party cookie blocking breaks *iframe-based*
+silent authentication, which this architecture does not use.
+
+### The demo path
+
+1. **Sign up** at the Baseline App — Auth0 offers passkey creation directly.
+2. **Log out, log back in** — click "Continue with a passkey" on the identifier
+   screen. Both factors are offered there; submitting an email selects the
+   password branch and there is no route back.
+3. **Open Sensitive App** — signed in, no prompt, identical `sid`. Both pages
+   render it.
+4. **Initiate transfer** — a TOTP challenge with *no* password or passkey
+   re-prompt. On arrival `amr` contains `mfa`, which it did not moments earlier.
