@@ -730,6 +730,9 @@ cd ../.. && npm run dev
 - Baseline App — http://baseline.littlecap.biz:3000
 - Sensitive App — http://sensitive.littlecap.biz:3001
 
+These resolve to `127.0.0.1`; nothing is exposed publicly. They are deliberately
+not `localhost` — [why](#why-not-localhost).
+
 Running this against a different tenant means substituting your own domain.
 `littlecap.biz` is baked into the Terraform defaults, and passkeys need a
 **custom domain** you control DNS for — the one prerequisite with no workaround,
