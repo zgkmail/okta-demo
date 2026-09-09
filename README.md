@@ -15,7 +15,7 @@ test record; this file is the summary.
 | SSO between the two apps | Done — verified by identical `sid`, no re-prompt |
 | Step-up on a sensitive operation, non-email factor | Done — TOTP on `/transfer`, no first-factor re-prompt |
 | Bonus A — native app | Done — Expo/iOS, step-up verified on the simulator |
-| Bonus B — external user store | Designed and spiked, not built. See [Bonus items](#bonus-items) |
+| Bonus B — external user store | Done — Postgres via custom DB connection, import off; SSO and step-up verified |
 
 Everything above was verified against the live tenant, not merely applied.
 
@@ -26,8 +26,9 @@ apps/baseline/     Express, :3000 — ordinary app, exists to prove SSO
 apps/sensitive/    Express, :3001 — same auth, plus step-up on /transfer
 apps/common/       shared auth config, claim viewer, coordinated logout
 apps/mobile/       Expo + react-native-auth0, iOS — Bonus A
-auth0/terraform/   clients, connection, Action, MFA, tenant flags
+auth0/terraform/   clients, connections, Action, MFA, tenant flags
 auth0/actions/     the step-up Action, as a real .js file
+external-store/    Postgres schema and custom DB scripts — Bonus B
 ```
 
 Node and Express with `express-openid-connect`, chosen to put as little as
@@ -348,6 +349,33 @@ because I thought to read the logs.
 **Cheapest fix:** warn when a client has more than one database connection
 enabled while Identifier First is on, since the flow cannot disambiguate them.
 
+### The `connection` parameter does two jobs that pull apart
+
+`connection` on `/authorize` both **selects a directory** and **constrains which
+sessions are eligible for resume**. With one database connection those never
+conflict. With two — which is what an external user store means — they pull in
+opposite directions:
+
+- You **must** pin, or Identifier First resolves to whichever connection Auth0
+  picks. Home Realm Discovery supports exactly one database connection; beyond
+  that it defaults to the first.
+- You **must not** pin, or Auth0 forces re-authentication whenever the existing
+  session came from a *different* connection — which is every SSO hop for a user
+  from the second directory.
+
+So the applications end up asymmetric: the one that offers a choice pins, the one
+that only resumes must not. That asymmetry is not obvious from either side.
+
+**Impact:** any tenant with a second database connection meets this — a
+migration, an acquisition, an external store. It presents as "SSO is broken":
+the user is simply asked to log in again, with a normal login screen and no
+error anywhere. Diagnosing it means noticing that the `connection` in the tenant
+log is not the one the session belongs to.
+
+**Cheapest fix:** separate the two meanings, so a directory can be selected for a
+fresh login without constraining resume. Failing that, documenting that pinning
+suppresses cross-connection resume, which nothing currently says.
+
 ### Terraform's report is about Terraform, not about the tenant
 
 An apply reported success while Auth0 had stored none of a custom-DB
@@ -427,16 +455,21 @@ recoverable each is for a developer who hits it:
    as authoritative and does not hold for Action-driven MFA. A developer
    following it ships a step-up their users can switch off. Worse than a
    documentation gap, because a gap makes you go and test.
-3. **Terraform read parity.** Slower burn, wider blast radius. It undermines
+3. **`connection` overloading select-vs-resume.** Also silent, and it breaks the
+   headline feature — SSO — for an entire class of users, while showing a
+   perfectly normal login screen. Ranked below the two above only because it
+   needs a second database connection to appear at all, so fewer tenants reach
+   it.
+4. **Terraform read parity.** Slower burn, wider blast radius. It undermines
    confidence in infrastructure-as-code generally, which is the workflow teams
    standardise on precisely because they want to stop checking by hand.
-4. **The MFA API split.** Genuinely limiting, but there is an open feature
+5. **The MFA API split.** Genuinely limiting, but there is an open feature
    request, a workaround, and no silent failure — you can see the checkbox. The
    composition being undocumented in the obvious place is a same-day fix.
 
 The ordering principle is **invisible failures first**. A developer can route
 around a limitation they can see; they cannot route around one that presents as
-success. Three of these four presented as success.
+success. Four of these five presented as success.
 
 ## Traps I set for myself
 
@@ -528,27 +561,43 @@ Not done because it is a bonus on an optional bonus, and it costs a public DNS
 change on a registrar that previously took hours to publish — poor value against
 a fixed walkthrough date.
 
-**B — external user store: designed and spiked, not built.** The approach is a
-Custom Database Connection over Postgres with **user import disabled**, so
-credentials never enter Auth0's store.
+**B — external user store: built and verified.** A Custom Database Connection
+over Neon Postgres with **user import disabled**, so Auth0 delegates every
+authentication back to the external store and keeps no copy. Setup and scripts
+are in `external-store/`.
 
-Two things are worth reporting regardless. Auth0's widely-cited 2023 guidance
-says custom databases and passkeys are mutually exclusive; **that is out of
-date** — a spike confirmed a connection with `import_mode = false` and Passkey
-ACTIVE, so users can live entirely in an external store *and* use passkeys. The
-two-connection workaround the older guidance implies is unnecessary.
+Lazy migration would have been the easier build and would have half-met the
+bonus: on first login Auth0 copies the user into its own store, stops calling the
+scripts, and Postgres degrades into a one-time seed. Import stays off precisely
+so the store remains the system of record.
 
-However, **Custom Database Connections are Professional-tier** — listed as
-unavailable on Free *and* Essentials. This tenant has them only inside a
-paid-features trial expiring 2026-09-26. A free-tier-permanent alternative is an
-Enterprise connection (the free plan includes one) pointed at an OIDC provider
-over the same Postgres: genuinely external, no plan dependency, at the cost of
-implementing passkeys in that IdP rather than getting them from Auth0.
+**What the demo shows is an absence.** Log in as a user whose row lives in
+Postgres, then look at Auth0 → User Management → Users: they are not there. Their
+`sub` reads `auth0|ext|alice`, where the `ext|` prefix is the `id` column from
+the database, so the identifier visibly originates outside Auth0. Then SSO to the
+Sensitive App and a step-up both work **identically** — the same Action, the same
+TOTP challenge. Nothing in the tenant's MFA configuration knows or cares where
+the credentials live, which is a stronger claim than the bonus asks for.
 
-Had I built it, I would have kept it on a **separate connection** from the core
-requirement — not because one connection cannot do both, since the spike proved
-it can, but as deliberate blast-radius isolation of a trial-tier, Early-Access
-dependency from a graded requirement.
+Kept on a **separate connection** from the core requirement. Not because one
+connection cannot do both — a spike confirmed `import_mode = false` with Passkey
+ACTIVE, so Auth0's widely-cited 2023 guidance that custom databases and passkeys
+are mutually exclusive is **out of date** — but as deliberate blast-radius
+isolation of a trial-tier dependency from a graded requirement.
+
+For the same reason the external connection is **password-only**. The passkey
+path with import off additionally needs a manual context-object toggle and
+`user_id` handling in Get User, and has not been exercised at runtime. Passkeys
+are already demonstrated on `okta-demo-db`, so staking a bonus on an unexercised
+Early Access path would be a poor trade.
+
+**Constraint worth stating:** Custom Database Connections are **Professional-tier**
+— unavailable on Free *and* Essentials. This tenant has them only inside a
+paid-features trial expiring 2026-09-26, so this bonus is time-boxed in a way the
+core requirements are not. A free-tier-permanent alternative is an Enterprise
+connection (the free plan includes one) pointed at an OIDC provider over the same
+Postgres: genuinely external, no plan dependency, at the cost of implementing
+passkeys in that IdP rather than getting them from Auth0.
 
 ## Where AI was used
 
