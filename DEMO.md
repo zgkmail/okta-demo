@@ -9,8 +9,16 @@ bonus misbehaves, the three core requirements are already demonstrated.
 
 ```sh
 cd ~/git_repo/okta-demo && npm run dev          # both web apps
-cd apps/mobile && npx expo run:ios --device "iPhone 17 Pro"
 ```
+
+The mobile app is a **Release build** — the JavaScript is bundled into it, so it
+launches from the simulator home screen with no Metro bundler and no terminal.
+Just open the simulator and tap the app.
+
+Do **not** run `npx expo run:ios` before the demo unless you also pass
+`--configuration Release`. The default is a debug build, which loads its JS from
+a dev server; if that server is not running the app opens on a red
+"could not connect to development server" screen.
 
 - [ ] Banner shows `client_id 1Sr8gdf…` (baseline) and `kNgtKSwi…` (sensitive).
       Anything else means Terraform's M2M credentials leaked in from the shell.
@@ -150,6 +158,7 @@ An enterprise connection over the same Postgres would fix it.
 | Redirect loop / "Blocked" page | Remember-browser cookie suppressing the challenge | Clear cookies for `auth.littlecap.biz` |
 | External login slow first time | Neon scaled to zero | Expected; sub-second |
 | Passkey button missing | Only renders once a passkey exists for that browser | Use the password path |
+| Mobile app red screen | A debug build was installed over the Release one | `npx expo run:ios --configuration Release --device "iPhone 17 Pro"` |
 | Stack trace | Should not happen now — error handler added | Note it and continue |
 
 ## If they ask "what's weakest?"
