@@ -83,7 +83,14 @@ challenge authorizes any sensitive action for five minutes. Time is the wrong
 axis; the right one is binding the challenge to the specific transfer.
 
 *If asked to watch it expire:* it is 300 seconds. Offer the explanation rather
-than the silence, or restart the app with `STEP_UP_TTL_SECONDS=30`.
+than the silence, rather than restarting with a shorter TTL mid-demo.
+
+*If asked "what if I cancel?"* — you cannot. Auth0's MFA prompt has no decline
+affordance; the only exit is navigating away, which abandons the transaction.
+Nothing breaks, because the guard fails closed and the session survives. Worth
+naming as a UX gap **specific to step-up**: at login there is nowhere to cancel
+to, but at step-up the user holds a session and came from a page, and "I have
+changed my mind about moving money" has no way to be expressed.
 
 ---
 

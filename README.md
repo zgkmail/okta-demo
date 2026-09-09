@@ -357,6 +357,12 @@ and nothing would notice. Brute-force protection and suspicious IP throttling
 front-channel redirect chain, so a downed peer breaks logout. Back-channel logout
 has neither problem but needs the apps deployed somewhere Auth0 can reach.
 
+**A started step-up cannot be cancelled.** Auth0's MFA prompt offers no decline,
+so the user's only exit is navigating away. Harmless — the guard fails closed and
+the session survives — but they are left to work that out. It also means the
+error handler covering a cancelled challenge is defensive rather than exercised:
+that path cannot currently be produced.
+
 ### Functional
 
 **External-store users can only sign in via the Baseline App.** The Sensitive App
@@ -500,6 +506,30 @@ developer trusting that thread lands where I did.
 **Cheapest fix:** `allowRememberBrowser` on `challengeWith`, which is what the
 feature request asks for. Short of that, documenting the composition in the
 `challengeWith` reference rather than leaving it in a blog post.
+
+### The MFA prompt has no cancel, and step-up is where that matters
+
+Auth0's "Verify your identity" screen offers no way to decline. With a single
+enrolled factor and no `additionalFactors`, there is not even a "Try Another
+Method" link. The transaction is terminal: the only exit is navigating away.
+
+At **login** that is close to reasonable — the user is not authenticated, so
+there is nowhere to cancel *to*. At **step-up** it is not. The user already holds
+a valid session and came from a specific page. "I have changed my mind about
+moving money" is an ordinary thing to want, and there is no way to express it.
+The same screen serves both situations despite the user's position being
+completely different.
+
+**Impact:** low severity, high frequency. Nothing breaks — an app whose guard
+fails closed simply does not grant the operation, and the session survives — but
+the user is left to work out that navigating away is their escape. On a
+money-moving operation, "no visible way out" is precisely the wrong feeling to
+give someone having second thoughts.
+
+**Cheapest fix:** a decline affordance on the challenge when the transaction
+carries `acr_values` — that is, when Auth0 already knows this is a step-up rather
+than a login — returning `access_denied` to the application so it can respond
+properly.
 
 ### A tenant flag gates the API, and fails at the wrong time
 
