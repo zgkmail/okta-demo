@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, Pressable } from 'react-native';
 import { Auth0Provider, useAuth0 } from 'react-native-auth0';
 import { StatusBar } from 'expo-status-bar';
 
@@ -51,7 +51,14 @@ function Demo() {
 
   const onLogin = async () => {
     setBlocked(null);
-    await authorize({ scope: 'openid profile email' });
+    await authorize({
+      scope: 'openid profile email',
+      // login_hint prefills the identifier screen. Convenience only -- typing on
+      // a simulator is tedious -- and it changes nothing about the flow: Auth0
+      // still decides which factor to offer for that identifier. Optional, and
+      // empty by default so no address is committed to a public repo.
+      ...(config.loginHint ? { additionalParameters: { login_hint: config.loginHint } } : {}),
+    });
     await refreshClaims();
   };
 
@@ -93,7 +100,7 @@ function Demo() {
   const step = stepUpState(claims);
 
   return (
-    <SafeAreaView style={s.safe}>
+    <View style={s.safe}>
       <ScrollView contentContainerStyle={s.body}>
         <Text style={s.h1}>Sensitive App (native)</Text>
         <Text style={s.sub}>{config.domain}</Text>
@@ -143,7 +150,7 @@ function Demo() {
         {error && <Text style={s.warn}>{String(error.message || error)}</Text>}
       </ScrollView>
       <StatusBar style="auto" />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -166,7 +173,11 @@ export default function App() {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#fff' },
-  body: { padding: 20, gap: 12 },
+  // react-native's SafeAreaView is deprecated in favour of
+  // react-native-safe-area-context, which is a native module and would mean a
+  // prebuild plus a full native rebuild. Not worth it for inset handling on one
+  // demo screen, so the top inset is just padded manually.
+  body: { paddingTop: 64, paddingHorizontal: 20, paddingBottom: 24, gap: 12 },
   h1: { fontSize: 22, fontWeight: '600' },
   sub: { color: '#888', marginBottom: 8 },
   p: { fontSize: 15, lineHeight: 21 },

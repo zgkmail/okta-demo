@@ -41,6 +41,16 @@ variable "sensitive_base_url" {
   default     = "http://sensitive.littlecap.biz:3001"
 }
 
+variable "mobile_login_hint" {
+  description = <<-EOT
+    Optional email to prefill the native app's identifier screen, purely to save
+    typing on a simulator. Empty by default so no address is committed to a
+    public repository -- set it in a gitignored .tfvars if you want it.
+  EOT
+  type        = string
+  default     = ""
+}
+
 variable "step_up_ttl_seconds" {
   description = <<-EOT
     How long a completed step-up stays valid in the Sensitive App. Drop it to

@@ -62,7 +62,8 @@ output "mobile_config" {
       terraform output -raw mobile_config > ../../apps/mobile/auth0-config.json
   EOT
   value = jsonencode({
-    domain   = local.mobile_domain
-    clientId = auth0_client.mobile.client_id
+    domain    = local.mobile_domain
+    clientId  = auth0_client.mobile.client_id
+    loginHint = var.mobile_login_hint
   })
 }
