@@ -320,6 +320,66 @@ without changing the tenant, I would want a check that reads settings back from
 the Management API and asserts on them. Terraform's own report is not sufficient
 evidence — see below.
 
+## Known gaps
+
+One inventory rather than scattered caveats. Some are deliberate scope
+decisions; several are genuine weaknesses I would not ship.
+
+### Security
+
+**Step-up is time-bound, not transaction-bound.** One challenge authorizes any
+sensitive action for five minutes. Reasoning and the hand-rolled alternative are
+under [Trade-offs](#trade-offs).
+
+**No CSRF token on `POST /transfer`.** Mitigated by the session cookie being
+`SameSite=Lax` and `HttpOnly`, which stops cross-*site* POSTs carrying it. The
+subtlety: `baseline.` and `sensitive.littlecap.biz` share a registrable domain
+and are therefore **same-site**, so a compromised or XSS'd Baseline App could
+POST to the Sensitive App and Lax would not help. Defence in depth wants a token.
+
+**TLS verification is disabled to Postgres.** `rejectUnauthorized: false` in both
+custom database scripts. Neon presents a real certificate chain; verifying it is
+the right thing and this is a demo shortcut.
+
+**The mobile guard is client-side and is not enforcement.** A native binary can
+be modified. The correct design has the app call an API and the API verify
+`amr`/`acr` on the access token.
+
+**Terraform state holds client secrets in cleartext.** Gitignored, but production
+wants a remote encrypted backend and the `client_secret_wo` write-only argument.
+
+**Breached Password Detection is off**, and the external Postgres store has no
+equivalent check at all — a Bonus B user could hold a known-compromised password
+and nothing would notice. Brute-force protection and suspicious IP throttling
+*are* enabled.
+
+**Coordinated logout depends on both apps being reachable.** It is a
+front-channel redirect chain, so a downed peer breaks logout. Back-channel logout
+has neither problem but needs the apps deployed somewhere Auth0 can reach.
+
+### Functional
+
+**External-store users can only sign in via the Baseline App.** The Sensitive App
+is deliberately unpinned so it can resume a session from any connection; a *cold*
+visit therefore resolves to whichever connection Auth0 picks — `okta-demo-db` —
+and an external user is told **"wrong email or password"**, which misdescribes
+the problem entirely. Verified.
+
+This is not fixable by configuration here. Auth0's Home Realm Discovery supports
+exactly one database connection, and both directories use `@littlecap.biz`
+addresses, so even domain-based routing could not tell them apart. A production
+answer is an explicit directory choice, or organization-based routing.
+
+**`terraform plan` never converges.** A provider read bug, not unapplied
+configuration — see [What this surfaced](#what-this-surfaced-about-the-product).
+
+**Attack Protection is not in Terraform.** Bot detection, brute force and
+breached-password settings are tenant configuration living outside code, which
+undercuts the config-as-code claim slightly.
+
+**Bonus B is time-boxed.** Custom Database Connections are Professional-tier;
+this tenant has them on a trial expiring 2026-09-26.
+
 ## What this surfaced about the product
 
 Building against Auth0 for a few days produced a short list of places where a
