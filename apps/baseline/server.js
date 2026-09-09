@@ -19,6 +19,7 @@ require('dotenv').config({ override: true });
 const express = require('express');
 const {
   authConfig,
+  errorHandler,
   mountCoordinatedLogout,
   renderPage,
   requiredEnv,
@@ -113,6 +114,9 @@ app.get('/claims.json', (req, res) => {
 });
 
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+
+// Last, after all routes: renders a readable page instead of a stack trace.
+app.use(errorHandler({ appName: 'Baseline App', accent: '#0ea5e9', port: PORT }));
 
 app.listen(PORT, () => {
   console.log(`Baseline App  → ${process.env.BASE_URL}`);

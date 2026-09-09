@@ -4,9 +4,8 @@
  * Sensitive App -- same authentication as the Baseline App, plus one operation
  * that demands more.
  *
- * The sensitive operation is "initiate a funds transfer" at /transfer.
- * At M1 it is guarded only by "are you logged in". M3 adds the step-up
- * challenge described in DESIGN.md section 4.
+ * The sensitive operation is "initiate a funds transfer" at /transfer, gated by
+ * requireStepUp below.
  */
 
 // See the note in apps/baseline/server.js -- without override the Terraform
@@ -17,6 +16,7 @@ const express = require('express');
 const { requiresAuth } = require('express-openid-connect');
 const {
   authConfig,
+  errorHandler,
   mountCoordinatedLogout,
   renderPage,
   requiredEnv,
@@ -34,18 +34,6 @@ const MFA_POLICY = 'http://schemas.openid.net/pape/policies/2007/06/multi-factor
 // behaviour testable without waiting five minutes between attempts.
 const STEP_UP_TTL_MS = Number(process.env.STEP_UP_TTL_SECONDS || 300) * 1000;
 
-/**
- * Gate a route behind a recent step-up challenge.
- *
- * Sends the user back through /authorize with acr_values, and deliberately
- * without prompt=login: Auth0 resumes the existing session, so the first factor
- * is not requested again and only the second factor is challenged.
- *
- * Freshness comes from the ID token's `iat`, not `auth_time` -- Auth0 only
- * emits auth_time when the request carries max_age, so reading it here would
- * compare against undefined. `iat` is the issue time of the token minted by the
- * step-up transaction, which is the moment the challenge was satisfied.
- */
 /**
  * How much life is left on the current step-up.
  *
@@ -77,6 +65,18 @@ function stepUpStatus(claims, ttlMs = STEP_UP_TTL_MS) {
   };
 }
 
+/**
+ * Gate a route behind a recent step-up challenge.
+ *
+ * Sends the user back through /authorize with acr_values, and deliberately
+ * without prompt=login: Auth0 resumes the existing session, so the first factor
+ * is not requested again and only the second factor is challenged.
+ *
+ * Freshness comes from the ID token's `iat`, not `auth_time` -- Auth0 only
+ * emits auth_time when the request carries max_age, so reading it here would
+ * compare against undefined. `iat` is the issue time of the token minted by the
+ * step-up transaction, which is the moment the challenge was satisfied.
+ */
 function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
   return (req, res, next) => {
     const claims = req.oidc.idTokenClaims || {};
@@ -252,6 +252,9 @@ app.get('/claims.json', (req, res) => {
 });
 
 app.get('/healthz', (_req, res) => res.type('text').send('ok'));
+
+// Last, after all routes: renders a readable page instead of a stack trace.
+app.use(errorHandler({ appName: 'Sensitive App', accent: '#a855f7', port: PORT }));
 
 app.listen(PORT, () => {
   console.log(`Sensitive App → ${process.env.BASE_URL}`);

@@ -267,8 +267,55 @@ ${extra}
 </body></html>`;
 }
 
+/**
+ * Error handler.
+ *
+ * Without one, Express renders a raw stack trace inside a <pre>. That is what a
+ * cancelled MFA challenge produces: the SDK throws on the callback and the user
+ * sees `BadRequestError` and a Node backtrace.
+ *
+ * Not a security boundary -- these apps are local and the traces reveal nothing
+ * sensitive -- but a stack trace is a poor thing to hand a user, and the
+ * step-up guard already deliberately fails closed, so a failure here is a state
+ * a real user can reach.
+ *
+ * Mount last, after all routes.
+ */
+function errorHandler({ appName, accent, port }) {
+  return (err, req, res, _next) => {
+    const status = err.status || err.statusCode || 500;
+    console.error(`[${appName}] ${status} ${err.message}`);
+
+    res
+      .status(status)
+      .type('html')
+      .send(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(appName)} — error</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.55 ui-sans-serif, system-ui, sans-serif; margin: 0 auto;
+         max-width: 40rem; padding: 3rem 1.5rem; }
+  h1 { font-size: 1.2rem; border-left: 5px solid ${accent}; padding-left: .8rem; }
+  .msg { background: #f59e0b22; border: 1px solid #f59e0b88; border-radius: 6px;
+         padding: .7rem .9rem; font-size: .92rem; }
+  a { color: ${accent}; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: .85rem; }
+</style></head><body>
+  <h1>${esc(appName)} — something went wrong</h1>
+  <p class="msg">${esc(err.message || 'Unknown error')}</p>
+  <p>This is most often a cancelled or expired authentication. Starting again
+     from the home page is usually enough.</p>
+  <p><a href="/">← ${esc(appName)}</a> &nbsp;·&nbsp; <a href="/logout">Log out</a></p>
+  <p><code>HTTP ${status} · localhost:${esc(port)}</code></p>
+</body></html>`);
+  };
+}
+
 module.exports = {
   authConfig,
+  errorHandler,
   mountCoordinatedLogout,
   renderPage,
   requiredEnv,
