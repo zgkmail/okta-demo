@@ -12,3 +12,6 @@ node_modules/
 *.tfvars
 !*.tfvars.example
 crash.log
+
+# generated from terraform output
+apps/mobile/auth0-config.json
