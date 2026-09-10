@@ -229,14 +229,19 @@ authorization check. The app records that step-up happened, with a short TTL,
 and treats `amr` purely as the one-time signal that the challenge just
 succeeded.
 
-**`auth_time` is also absent (observed in M1).** Auth0 only emits it when the
-authorization request carries `max_age`. Any freshness check built on reading
-`auth_time` off the ID token would silently compare against `undefined` and
-either always pass or always fail. Two options: send `max_age` purely to make
-the claim appear, or keep freshness entirely server-side. The design already
-takes the second path via `stepUpAt`, so this changes nothing structurally --
-but it does mean `auth_time` must not be used as a cross-check, and the
-walkthrough should not claim it is one.
+**`auth_time` is the wrong claim for this, independently of availability.** It
+records when the *first factor* was satisfied; the guard needs to know when the
+*MFA challenge* was. Log in at 10:00, step up at 10:30, and those are different
+moments — so `auth_time` would be the wrong measure even if it were present.
+`iat` is the issue time of the token minted by the step-up transaction, which is
+exactly when the challenge completed.
+
+Availability is a second, weaker reason: `auth_time` is absent (observed in M1)
+unless the request carries `max_age`, and `max_age` would force re-authentication
+of the first factor once the session aged past it — defeating the point of a
+step-up. So the workaround that would make the claim appear is itself
+disqualifying, but the semantic mismatch is the reason that would still hold
+without it.
 
 ### Known weakness, stated deliberately
 

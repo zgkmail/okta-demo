@@ -93,10 +93,17 @@ easy to narrate.
 authenticator app. WebAuthn is *available* and would be stronger; see
 [trade-offs](#trade-offs).
 
-**Freshness comes from the ID token's `iat`, not `auth_time`.** Auth0 only emits
-`auth_time` when the request carries `max_age`, so a check built on it would
-silently compare against `undefined`. `iat` is the issue time of the token minted
-by the step-up transaction.
+**Freshness comes from the ID token's `iat`, not `auth_time`.** `auth_time`
+records when the *first factor* was satisfied; the guard needs to know when the
+*MFA challenge* was. Those are different events — log in at 10:00, step up at
+10:30 — so `auth_time` would be the wrong measure even where it is available.
+`iat` is the issue time of the token minted by the step-up transaction, which is
+precisely when the challenge completed.
+
+`auth_time` also happens to be absent unless the request carries `max_age`, and
+`max_age` would force re-authentication of the *first* factor once the session
+aged past it — defeating the point of a step-up. But that is a second reason, not
+the first one.
 
 <a id="why-not-localhost"></a>
 **The apps run on real hostnames, not `localhost`.** Auth0 classifies `localhost`

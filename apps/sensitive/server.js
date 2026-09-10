@@ -72,10 +72,18 @@ function stepUpStatus(claims, ttlMs = STEP_UP_TTL_MS) {
  * without prompt=login: Auth0 resumes the existing session, so the first factor
  * is not requested again and only the second factor is challenged.
  *
- * Freshness comes from the ID token's `iat`, not `auth_time` -- Auth0 only
- * emits auth_time when the request carries max_age, so reading it here would
- * compare against undefined. `iat` is the issue time of the token minted by the
- * step-up transaction, which is the moment the challenge was satisfied.
+ * Freshness comes from the ID token's `iat`, not `auth_time`, and for a
+ * correctness reason rather than an availability one: auth_time records when the
+ * FIRST factor was satisfied, whereas this guard needs to know when the MFA
+ * CHALLENGE was. Log in at 10:00 and step up at 10:30 and those differ, so
+ * auth_time would be the wrong measure even where it is present.
+ *
+ * `iat` is the issue time of the token minted by the step-up transaction, which
+ * is precisely when the challenge completed.
+ *
+ * (auth_time is also absent unless the request carries max_age -- and max_age
+ * would force re-authentication of the first factor, defeating the point of a
+ * step-up. A second reason, not the first.)
  */
 function requireStepUp(ttlMs = STEP_UP_TTL_MS) {
   return (req, res, next) => {
