@@ -61,11 +61,18 @@ Identifier First on New Universal Login. You type an email and Auth0 decides
 what proof to ask for. Passkeys also need a custom domain, because they bind to
 a WebAuthn Relying Party ID and Auth0 won't use a `*.auth0.com` one.
 
-**SSO** falls out of both apps being clients of the same tenant using
-Authorization Code with full-page redirects. Two things break it, and I broke
-both before I understood them: sending `prompt=login`, which tells Auth0 to
-ignore the session it already has, and the receiving app never calling
-`/authorize` at all, since a resumed session does nothing on its own.
+**SSO** comes for free once both apps are clients of the same tenant and use
+Authorization Code with full-page redirects. Signing in the first time leaves an
+Auth0 session cookie on the custom domain. When the second app sends you to
+`/authorize`, Auth0 finds that cookie and hands back a code without asking for
+anything.
+
+I broke that twice before I understood it. Sending `prompt=login` tells Auth0 to
+ignore the session it already has, so the user gets asked to sign in again and it
+looks like SSO is broken when the session was fine all along. Separately, the
+second app has to actually call `/authorize` — a live session sitting in Auth0
+does nothing on its own. My Sensitive App originally just rendered "not signed
+in" while a perfectly good session went unused.
 
 **Step-up** guards `/transfer`. The middleware checks the ID token for `amr`
 containing `mfa` within a TTL. On a miss it sends the user back through
