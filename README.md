@@ -5,7 +5,7 @@ password, move between the apps without re-authenticating, and are challenged fo
 a second factor before one specific sensitive operation.
 
 Tenant configuration is Terraform. `DESIGN.md` carries the full reasoning and
-test record; this file is the summary.
+test record.
 
 ## Summary
 
