@@ -49,7 +49,6 @@ narrated.
 Neither app contains branching logic about passkeys versus passwords, and
 neither knows how the second factor was satisfied. That all lives in the tenant.
 
-
 ### How each requirement is met
 
 All three behaviours come from the **same `/authorize` endpoint and the same
@@ -84,7 +83,6 @@ including ones Auth0 resumes from an existing session.** Ordinary logins carry n
 `acr_values` and fall straight through, so the Baseline App stays single-factor;
 the tenant MFA policy is `never` for the same reason, leaving the Action to
 decide per transaction. (Auth0 calls its MFA subsystem *Guardian*.)
-
 
 ### Decisions where the brief was open-ended
 
@@ -342,105 +340,60 @@ remember-browser behaviour, the redirect loop, and the missing loop guard.
 
 ## Bonus items
 
-**A — native app: built and verified.** Expo with `react-native-auth0`, running
-on the iOS simulator. Authorization Code with PKCE through
-`ASWebAuthenticationSession` rather than an embedded webview — the SDK's default,
-and the correct choice: an embedded webview would break passkeys and is an OAuth
-anti-pattern.
+**A — native app: built and verified.** Expo with `react-native-auth0` on the iOS
+simulator, Authorization Code with PKCE through `ASWebAuthenticationSession`
+rather than an embedded webview — which would break passkeys and is an OAuth
+anti-pattern. A **public client**: a native app cannot keep a secret, so token
+endpoint authentication is `none` and PKCE carries the security.
 
-The point of the exercise is what it *didn't* need. Tenant-side it added exactly
-one thing — a native client. The Action, the Guardian factors and the connection
-are all shared with the web apps unchanged. The mobile step-up is the same
-`acr_values` on the same `/authorize`, passed through `additionalParameters`.
-Nothing about the policy is client-specific, which is the argument for putting it
-in the tenant rather than in each application.
+What matters is what it *didn't* need. Tenant-side it added exactly one thing, a
+client. The Action, Guardian factors and connection are shared with the web apps
+unchanged, and the mobile step-up is the same `acr_values` on the same
+`/authorize`. None of the policy is client-specific.
 
-It is a **public client**: a native app cannot keep a secret, so token endpoint
-authentication is `none` and PKCE carries the security.
+Two limits, stated plainly. **The guard is client-side and is not enforcement** —
+a native binary can be modified, and the correct architecture has the app call an
+API that verifies `amr`/`acr` on the access token. And **passkeys do not work on
+the iOS simulator**, which has no Secure Enclave; it uses the password path, and
+passkey-as-first-factor is demonstrated in the web apps instead.
 
-Two honest limits:
-
-**The guard is client-side, and that is not a security boundary.** A native
-binary can be modified; nothing stops someone skipping the check. In the web apps
-the equivalent guard is server-side and real. The correct mobile architecture is
-that the app calls an API and *the API* verifies `amr`/`acr` on the access token
-before performing the transfer. There is no API here, so the check is
-illustrative rather than enforcing — worth saying plainly rather than letting the
-demo imply otherwise.
-
-**Passkeys do not work on the iOS simulator**, which has no Secure Enclave and so
-no platform authenticator. The simulator uses the password path. This is a
-simulator limitation rather than a configuration problem, and Bonus A does not
-ask for passkeys — passkey-as-first-factor is demonstrated in the web apps. A
-physical device would exercise it.
-
-**Web-to-native SSO: understood, not implemented.** The brief says the native app
-need not share SSO with the web apps, so this was out of scope — but it is worth
-being precise about what would and would not work, because the obvious framing
-is wrong.
-
-*Not possible:* SSO from a browser on the Mac to the app in the simulator. They
-are separate environments with separate cookie jars, so there is no session to
-carry. A "open the mobile app" button would not help either — a custom-scheme
-link only opens an app whose scheme is registered on that same device, and the
-app is installed in the simulator, not on macOS.
-
-*Would work:* the same thing entirely within one device. `ASWebAuthenticationSession`
-shares Safari's website data unless an ephemeral session is requested, so logging
-into the Baseline App in the simulator's Safari and then opening the native app
-would let its `/authorize` find the tenant session and return without a prompt.
-A deep link from the page would work there too, since the scheme is registered in
-that simulator.
-
-*The blocker is reachability, not identity.* The web apps resolve through the
-Mac's `/etc/hosts`, which the simulator does not consult. The fix is public DNS
-`A` records for `baseline`/`sensitive.littlecap.biz` pointing at `127.0.0.1`: the
-simulator shares the host's network stack, so loopback there is the Mac's
-loopback and reaches the running apps. That keeps callbacks verifiable, unlike
-the alternative of switching to `localhost`, which would reintroduce the consent
-screen described in Key decisions.
-
-Not done because it is a bonus on an optional bonus, and it costs a public DNS
-change on a registrar that previously took hours to publish — poor value against
-a fixed walkthrough date.
+*Web-to-native SSO* was out of scope per the brief, but the obvious framing is
+wrong and worth correcting. Mac browser to simulator is impossible — separate
+environments, separate cookie jars — and a deep-link button would not help, since
+a custom scheme only opens an app registered on that device. Within a single
+device it *would* work, because `ASWebAuthenticationSession` shares Safari's
+cookie jar. **The blocker is reachability, not identity:** the web apps resolve
+only through the Mac's `/etc/hosts`, and public DNS pointing at `127.0.0.1` would
+fix it, since the simulator shares the host's network stack.
 
 **B — external user store: built and verified.** A Custom Database Connection
-over Neon Postgres with **user import disabled**, so Auth0 delegates every
-authentication back to the external store and keeps no copy. Setup and scripts
-are in `external-store/`.
+over Neon Postgres with **import disabled**, so Auth0 delegates every
+authentication back to the store and keeps no copy. Scripts and setup are in
+`external-store/`.
 
-Lazy migration would have been the easier build and would have half-met the
-bonus: on first login Auth0 copies the user into its own store, stops calling the
-scripts, and Postgres degrades into a one-time seed. Import stays off precisely
-so the store remains the system of record.
+Lazy migration would have been easier and would have half-met the bonus: Auth0
+copies the user in on first login, stops calling the scripts, and Postgres
+degrades into a one-time seed.
 
-**What the demo shows is an absence.** Log in as a user whose row lives in
-Postgres, then look at Auth0 → User Management → Users: they are not there. Their
-`sub` reads `auth0|ext|alice`, where the `ext|` prefix is the `id` column from
-the database, so the identifier visibly originates outside Auth0. Then SSO to the
-Sensitive App and a step-up both work **identically** — the same Action, the same
-TOTP challenge. Nothing in the tenant's MFA configuration knows or cares where
-the credentials live, which is a stronger claim than the bonus asks for.
+**The demo is an absence.** Log in as a Postgres-resident user, then look at
+Auth0 → Users: they are not there. Their `sub` reads `auth0|ext|alice`, the prefix
+coming from the database's `id` column. SSO and step-up then work identically —
+same Action, same challenge — so nothing in the MFA configuration knows or cares
+where the credentials live.
 
-Kept on a **separate connection** from the core requirement. Not because one
-connection cannot do both — a spike confirmed `import_mode = false` with Passkey
-ACTIVE, so Auth0's widely-cited 2023 guidance that custom databases and passkeys
-are mutually exclusive is **out of date** — but as deliberate blast-radius
-isolation of a trial-tier dependency from a graded requirement.
+Kept on a **separate connection** for blast-radius isolation rather than
+necessity: a spike confirmed `import_mode = false` with Passkey ACTIVE, so Auth0's
+widely-cited 2023 guidance that custom databases and passkeys are mutually
+exclusive is **out of date**. The connection is password-only for the same
+reason — the passkey path there needs a manual context-object toggle and has not
+been exercised at runtime.
 
-For the same reason the external connection is **password-only**. The passkey
-path with import off additionally needs a manual context-object toggle and
-`user_id` handling in Get User, and has not been exercised at runtime. Passkeys
-are already demonstrated on `okta-demo-db`, so staking a bonus on an unexercised
-Early Access path would be a poor trade.
-
-**Constraint worth stating:** Custom Database Connections are **Professional-tier**
-— unavailable on Free *and* Essentials. This tenant has them only inside a
-paid-features trial expiring 2026-09-26, so this bonus is time-boxed in a way the
-core requirements are not. A free-tier-permanent alternative is an Enterprise
-connection (the free plan includes one) pointed at an OIDC provider over the same
-Postgres: genuinely external, no plan dependency, at the cost of implementing
-passkeys in that IdP rather than getting them from Auth0.
+**Constraint:** Custom Database Connections are **Professional-tier**, unavailable
+on Free *and* Essentials. This tenant has them on a trial expiring 2026-09-26, so
+this bonus is time-boxed in a way the core requirements are not. The
+free-tier-permanent alternative is an Enterprise connection over the same
+Postgres, which would also carry `domain_aliases` and close the routing gap in
+[Known gaps](#known-gaps).
 
 ## Known gaps
 
