@@ -22,7 +22,9 @@ developer-experience problems this exercise turned up, ranked by impact, plus an
 honest list of what's weak in what I built. It's the part I'd most want to talk
 through.
 
-Also here: [DESIGN.md](DESIGN.md) for the reasoning and test record, and
+Also here: [STORIES.md](STORIES.md), where I read the brief back as user stories
+and found a couple of acceptance criteria it doesn't mention;
+[DESIGN.md](DESIGN.md) for the reasoning and test record; and
 [DEMO.md](DEMO.md) for the walkthrough script.
 
 ## What I built, and the decisions behind it

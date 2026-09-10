@@ -461,6 +461,7 @@ the runbook is the source of truth where they disagree.
 okta-demo/
 ├── README.md              deliverable write-up
 ├── FINDINGS.md            product observations and known gaps
+├── STORIES.md             the brief read back as user stories
 ├── DEMO.md                walkthrough run sheet
 ├── DESIGN.md              this file
 ├── apps/
