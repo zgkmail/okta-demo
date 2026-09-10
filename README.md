@@ -123,7 +123,7 @@ Auth0 offers two ways to demand MFA from an Action:
 
 | | `api.multifactor.enable` | `api.authentication.challengeWith` |
 | --- | --- | --- |
-| Suppress "Remember this device" | yes, `allowRememberBrowser: false` | **no** |
+| Suppress "Remember this device" checkbox | yes, `allowRememberBrowser: false` | **no** |
 | Name a specific factor | **no** — `'any'`, `'duo'`, `'google-authenticator'`, `'guardian'` | yes |
 
 Calling `enable()` **first**, then `challengeWith`, gives both. Verified end to
