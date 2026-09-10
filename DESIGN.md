@@ -460,6 +460,8 @@ the runbook is the source of truth where they disagree.
 ```
 okta-demo/
 ├── README.md              deliverable write-up
+├── FINDINGS.md            product observations and known gaps
+├── DEMO.md                walkthrough run sheet
 ├── DESIGN.md              this file
 ├── apps/
 │   ├── baseline/          Express, :3000
