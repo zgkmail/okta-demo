@@ -10,24 +10,12 @@ test record; this file is the summary.
 ## Summary
 
 Everything asked for works, both bonus items included, and each was verified
-against the live tenant rather than inferred from a successful deploy — a
-distinction that turned out to matter more than once.
+against the live tenant rather than inferred from a successful deploy.
 
-The more useful output is what building it surfaced. Auth0's defaults silently
-widened my configuration twice. Its documentation is confidently wrong about one
-step-up behaviour, in a way that would ship a step-up users can switch off. Its
-Terraform provider reports success for changes it never made, and a permanent
-diff for changes it did. And two MFA APIs each lack something the other has —
-which an open community request says cannot be reconciled, and which testing
-showed can. **Four of the five issues I hit presented as success rather than
-failure**, which is the theme I would take away: a developer can route around a
-limitation they can see. Each is written up with its impact and the cheapest fix
-in [What this surfaced about the product](#what-this-surfaced-about-the-product).
-
-Where this is weak, [Known gaps](#known-gaps) says so plainly. The step-up is
-bound to time rather than to the transaction, and the mobile guard is
-client-side and therefore not enforcement. Both are deliberate scope decisions
-with the reasoning written down, not oversights.
+Two sections beyond the brief:
+[What this surfaced about the product](#what-this-surfaced-about-the-product),
+the developer-experience issues building this exposed, ranked by impact; and
+[Known gaps](#known-gaps), where this is weak and why.
 
 ## Status
 
