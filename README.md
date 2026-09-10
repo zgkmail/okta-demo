@@ -27,8 +27,6 @@ the developer-experience issues building this exposed, ranked by impact; and
 | Bonus A — native app | Done — Expo/iOS, step-up verified on the simulator |
 | Bonus B — external user store | Done — Postgres via custom DB connection, import off; SSO and step-up verified |
 
-Everything above was verified against the live tenant, not merely applied.
-
 ## What I built, and key decisions
 
 ### The applications
