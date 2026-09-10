@@ -181,9 +181,30 @@ session store keyed by `sid`.
 changing anything, I'd want something that reads settings back from the
 Management API and asserts on them. Terraform's own report isn't evidence.
 
+**Turn recovery codes back on.** I disabled them so enrollment stayed on one
+screen, which is fine for a demo and would be wrong for a product. Lose your
+authenticator and there's no self-service way back — someone with admin access
+has to reset the factor for you.
+
+What makes it worse here is that MFA only guards the step-up, not login. Losing
+your phone doesn't lock you out of the account, it locks you out of moving money,
+and nothing else. You'd sign in normally, everything would look fine, and you'd
+find out at the exact moment you needed to make a transfer. That's a latent
+failure surfacing at the worst possible time, and it's the kind of thing that
+generates a support ticket from someone who is already unhappy.
+
+It also stacks with the remember-browser behaviour in
+[FINDINGS.md](FINDINGS.md): two separate ways to end up permanently unable to
+complete a transfer, both silent, both needing an administrator to unpick.
+
+In production I'd enable recovery codes and probably nudge people to enrol a
+second factor too, since recovery codes get screenshotted and lost about as
+often as they get saved properly. And there'd need to be an identity-verified
+reset path, because "contact support" isn't a plan if there's no support desk.
+
 Smaller things: Terraform state holds client secrets in cleartext and wants a
-remote encrypted backend; recovery codes are off to keep enrollment to one
-screen; TLS verification is relaxed against Neon in the custom DB scripts.
+remote encrypted backend, and TLS verification is relaxed against Neon in the
+custom DB scripts.
 
 ## Where and how I used AI
 
